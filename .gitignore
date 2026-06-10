@@ -22,10 +22,18 @@ ENV/
 .env.*
 !.env.example
 
-# Local default run outputs
+# Local reproduction outputs
 /outputs/
 /reproduction/
 /runs/
+
+# Large model/data artifacts
+*.log
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pkl
 
 # Editor and OS files
 .idea/

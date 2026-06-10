@@ -1,24 +1,19 @@
-# 代码实现模块
+# 代码实现 Skill
 
-## 目标
+目标：生成和维护通用复现程序。
 
-按 `outputs/reproduction_spec.md` 生成可运行论文复现代码，先做稳健基线，再逐步实现论文核心方法。
+## 目录约定
 
-## 流程
+- `reproduction/main.py`：整体比较主程序。
+- `reproduction/methods/baseline.py`：基线方法。
+- `reproduction/methods/proposed.py`：论文核心方法。
+- `reproduction/data.py`：数据加载。
+- `reproduction/metrics.py`：指标整理。
+- `reproduction/config.json`：数据、方法、指标和随机种子配置。
 
-1. 先读取 `outputs/reproduction_spec.md`，不要凭记忆实现。
-2. 检查本地依赖和已有代码；优先复用作者代码、官方实现或当前项目模式。
-3. 先实现最小可运行基线，再实现论文核心方法。
-4. 固定随机种子，输出中间指标，避免只给最终图。
-5. 缺失重依赖时，先做稳健可运行替代层，并在报告中明确标注。
+## 必做
 
-## 代码要求
-
-- 提供清晰 CLI，例如 `python run_reproduction.py --stage baseline` 和 `--all`。
-- 输出统一写入 `outputs/`。
-- 每个阶段完成后运行最小验证。
-- 不把下载、安装、训练长任务混在未确认步骤里。
-
-## 审查包
-
-说明新增/修改代码、可运行命令、关键指标、差异风险和下一阶段内容。
+- 每个方法保持独立 `run(dataset)` 入口。
+- 主程序统一调用所有方法并写出 `outputs/tables/results.csv`。
+- 程序说明写入 `outputs/programs.md`。
+- 未实现真实算法时保留 `todo` 或 `not_run`，不得伪造结果。

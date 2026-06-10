@@ -51,7 +51,7 @@ def update_memory(stage: str, state: WorkflowState, context: RunContext, generat
             "",
             f"- 输入论文：{state.paper_input or '未设置'}",
             f"- 产物：{', '.join(generated_files) if generated_files else '无'}",
-            "- 下一步：人工审核通过后运行下一阶段命令。",
+            "- 下一步：人工审查通过后运行下一阶段命令。",
             "",
         ]
     )
@@ -67,18 +67,20 @@ def _initial_memory(state: WorkflowState) -> str:
             "## 用户偏好",
             "",
             "- 默认使用中文产物、中文审查包和中文报告。",
-            "- 第一版优先轻量可运行；需要安装重依赖或长任务前先确认。",
-            "- 每个阶段结束后停止，等待人工审核。",
+            "- 优先生成轻量、可运行、通用的复现工作流。",
+            "- 输出精简：方法独立程序、整体比较主程序、必要工具程序、一个报告和一个审阅报告。",
+            "- 不伪造论文结果；缺少真实数据时必须标注未完成或数据无效。",
             "",
             "## 任务记忆",
             "",
             f"- 论文输入：{state.paper_input or '未设置'}",
-            "- 运行模式：默认脚手架模式；`--llm` 为可选增强路径。",
+            "- 运行模式：默认 LangChain Agent；`--scaffold` 为离线确定性脚手架路径。",
             "",
             "## 已确认决策",
             "",
             "- 采用单总控 Agent + 阶段化工具，不拆真正自治子 Agent。",
             "- 支持通过 `--run-dir` 隔离每次运行产物。",
+            "- 使用通用复现目录结构：`reproduction/main.py`、`reproduction/methods/`、`data.py`、`metrics.py`。",
             "",
         ]
     )

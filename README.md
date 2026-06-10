@@ -1,170 +1,237 @@
-# Paper Repro Agent
+# paper-repro-agent
 
-轻量化论文调研与复现 Agent。它把 `paper-repro-orchestrator` 的中文论文复现流程做成一个可运行 CLI：按阶段读取 skill 参考模块，生成阶段产物、状态文件、记忆文件和人工审查包。
+一个轻量化论文复现 CLI Agent：把论文 PDF 放进一个运行文件夹，即可按阶段生成复现规格、程序骨架、结果报告和审阅报告。
 
-第一版默认使用脚手架模式，不依赖 API key；需要更强的论文精读和工具调用能力时，可以通过 `--llm` 启用 LangChain + OpenAI 兼容模型。
+## Features
 
-## 安装
+- 通用论文复现流程，不针对单篇论文硬编码。
+- 支持文件夹式运行：论文、代码、结果和报告都保存在同一个运行目录下。
+- 默认使用 LangChain Agent 调用模型和工具完成阶段任务。
+- 支持 OpenAI-compatible Chat API，可接入 OpenAI、千问/Qwen 等模型服务。
+- 提供 `--scaffold` 离线模式，生成确定性、可运行但不伪造结果的脚手架。
+- 可选 LangGraph 审阅子图，生成单文件审阅报告。
+- 自动维护 `memory.md` 和 `stage_notes.md`，记录用户偏好、阶段产物和后续约束。
 
-开发安装：
+## Installation
+
+本地开发安装：
 
 ```bash
 pip install -e .[dev,pdf]
 ```
 
-只作为工具使用：
+如需 LangGraph 审阅子图：
 
 ```bash
-pip install -e .[pdf]
+pip install -e .[dev,pdf,review]
 ```
 
-Windows PowerShell 如果不安装为命令，也可以用：
-
-```powershell
-$env:PYTHONPATH="src"
-python -m paper_repro_agent.cli --help
-```
-
-## 基本调用
-
-每次只执行一个阶段，阶段完成后生成审查包并停止。确认结果后，再运行下一阶段。
-
-```bash
-paper-repro run --paper "<PDF|URL|论文标题>" --stage literature
-paper-repro run --stage reading
-paper-repro run --stage baseline
-paper-repro run --stage core
-paper-repro run --stage figures
-paper-repro run --stage validation
-```
-
-推荐为每篇论文设置独立运行目录，避免不同论文的产物混在一起：
-
-```bash
-paper-repro run --paper "tests/2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf" --stage literature --run-dir tests/akit_pdf_smoke
-paper-repro run --stage reading --run-dir tests/akit_pdf_smoke
-paper-repro run --stage baseline --run-dir tests/akit_pdf_smoke
-paper-repro run --stage figures --run-dir tests/akit_pdf_smoke
-paper-repro run --stage validation --run-dir tests/akit_pdf_smoke
-```
-
-查看状态：
-
-```bash
-paper-repro state --run-dir tests/akit_pdf_smoke
-```
-
-## 产物目录
-
-如果不指定 `--run-dir`，默认写入项目根目录下的 `outputs/` 和 `reproduction/`。
-
-如果指定 `--run-dir tests/akit_pdf_smoke`，产物会写入：
-
-- `tests/akit_pdf_smoke/outputs/state.json`
-- `tests/akit_pdf_smoke/outputs/memory.md`
-- `tests/akit_pdf_smoke/outputs/stage_notes.md`
-- `tests/akit_pdf_smoke/outputs/literature_sources.md`
-- `tests/akit_pdf_smoke/outputs/reproduction_spec.md`
-- `tests/akit_pdf_smoke/outputs/report.md`
-- `tests/akit_pdf_smoke/reproduction/run_reproduction.py`
-
-`memory.md` 使用增量摘要记忆、反思式压缩和结构化槽位更新，记录用户偏好、阶段决策和后续约束。
-
-## LLM 模式
-
-脚手架模式能验证流程和产物结构，但不会伪造论文结论。若要让 Agent 基于论文内容生成更完整的分析，可配置 OpenAI 兼容模型并加 `--llm`：
-
-```powershell
-$env:PAPER_REPRO_API_KEY="your_api_key"
-$env:PAPER_REPRO_MODEL="gpt-4.1-mini"
-$env:PAPER_REPRO_BASE_URL="https://api.openai.com/v1"
-paper-repro run --paper "tests/2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf" --stage literature --run-dir tests/akit_pdf_smoke --llm
-```
-
-也可使用通用 OpenAI 环境变量：
-
-```bash
-OPENAI_API_KEY=your_api_key OPENAI_BASE_URL=https://api.openai.com/v1 paper-repro run --paper "<paper>" --stage literature --llm
-```
-
-## AKIT PDF 冒烟测试
-
-仓库内包含测试论文：
-
-```text
-tests/2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf
-```
-
-已验证脚手架模式可在 `tests/akit_pdf_smoke/` 下生成完整阶段产物。重新运行测试：
-
-```powershell
-$env:PYTHONPATH="src"
-python -m paper_repro_agent.cli run --paper "tests/2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf" --stage literature --run-dir tests/akit_pdf_smoke
-python -m paper_repro_agent.cli run --stage reading --run-dir tests/akit_pdf_smoke
-python -m paper_repro_agent.cli run --stage baseline --run-dir tests/akit_pdf_smoke
-python tests/akit_pdf_smoke/reproduction/run_reproduction.py --stage baseline --outputs tests/akit_pdf_smoke/outputs
-python -m paper_repro_agent.cli run --stage figures --run-dir tests/akit_pdf_smoke
-python -m paper_repro_agent.cli run --stage validation --run-dir tests/akit_pdf_smoke
-```
-
-## 测试
-
-```bash
-python -m pytest -q
-```
-
-当前基础测试覆盖 CLI 参数解析、状态读写、reference 加载、审查包生成和 `--run-dir` 阶段产物写入。
-
-## 上传到 GitHub
-
-第一次发布到 GitHub：
-
-```bash
-git add .
-git commit -m "Build lightweight paper reproduction agent"
-git branch -M main
-git remote add origin https://github.com/<user>/<repo>.git
-git push -u origin main
-```
-
-如果已经配置过远程仓库：
-
-```bash
-git add .
-git commit -m "Build lightweight paper reproduction agent"
-git push
-```
-
-发布前检查：
-
-```bash
-python -m pytest -q
-git status --short
-```
-
-## 他人安装
-
-从 GitHub 直接安装：
+从 GitHub 安装：
 
 ```bash
 pip install "paper-repro-agent[pdf] @ git+https://github.com/<user>/<repo>.git"
 ```
 
-安装开发依赖：
+## Quick Start
 
-```bash
-pip install "paper-repro-agent[dev,pdf] @ git+https://github.com/<user>/<repo>.git"
+推荐为每篇论文创建一个独立运行目录。把论文 PDF 放进去后，后续产物都会写在这个目录下。
+
+默认命令会调用 LangChain Agent。请先配置模型；如果只想离线生成脚手架，在每条 `run` 命令后添加 `--scaffold`。
+
+PowerShell：
+
+```powershell
+mkdir runs/my-paper
+Copy-Item "path\to\paper.pdf" runs/my-paper\
+
+paper-repro run --stage literature --run-dir runs/my-paper
+paper-repro run --stage reading --run-dir runs/my-paper
+paper-repro run --stage baseline --run-dir runs/my-paper
+paper-repro run --stage core --run-dir runs/my-paper
+paper-repro run --stage validation --run-dir runs/my-paper
+paper-repro review --run-dir runs/my-paper
 ```
 
-安装后调用：
+Bash：
 
 ```bash
-paper-repro run --paper "<PDF|URL|论文标题>" --stage literature --run-dir runs/demo
-paper-repro run --stage reading --run-dir runs/demo
+mkdir -p runs/my-paper
+cp path/to/paper.pdf runs/my-paper/
+
+paper-repro run --stage literature --run-dir runs/my-paper
+paper-repro run --stage reading --run-dir runs/my-paper
+paper-repro run --stage baseline --run-dir runs/my-paper
+paper-repro run --stage core --run-dir runs/my-paper
+paper-repro run --stage validation --run-dir runs/my-paper
+paper-repro review --run-dir runs/my-paper
 ```
 
-## 发布文件
+如果运行目录下恰好有一个 PDF，`paper-repro run` 会自动识别它。若目录下没有 PDF 或存在多个 PDF，请显式指定：
 
-- `.gitignore`：排除缓存、虚拟环境、本地密钥和默认运行产物。
-- `LICENSE`：MIT License。
-- `.github/workflows/tests.yml`：GitHub Actions 中运行 `python -m pytest -q`。
+```bash
+paper-repro run --paper "runs/my-paper/paper.pdf" --stage literature --run-dir runs/my-paper
+```
+
+查看当前状态：
+
+```bash
+paper-repro state --run-dir runs/my-paper
+```
+
+未安装包时，可用源码方式运行：
+
+```powershell
+$env:PYTHONPATH="src"
+python -m paper_repro_agent.cli run --stage literature --run-dir runs/my-paper
+```
+
+## Model Configuration
+
+默认使用 LangChain `create_agent` 和 OpenAI-compatible Chat API。OpenAI 示例：
+
+GitHub 仓库只提交 `.env.example`，不会提交真实 `.env`。首次使用时请复制模板：
+
+```bash
+cp .env.example .env
+```
+
+然后在 `.env` 中填写真实 `PAPER_REPRO_API_KEY`。如果没有配置 API key，默认 LangChain 模式会报错并提示使用 `.env.example` 或 `--scaffold`。
+
+```powershell
+set PAPER_REPRO_API_KEY=your_api_key
+set PAPER_REPRO_BASE_URL=https://api.openai.com/v1
+set PAPER_REPRO_MODEL=gpt-4.1-mini
+```
+
+千问/Qwen 示例：
+
+```powershell
+set PAPER_REPRO_API_KEY=your_dashscope_api_key
+set PAPER_REPRO_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+set PAPER_REPRO_MODEL=qwen-plus
+```
+
+也兼容 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。如果未配置 API key，默认 LangChain 模式会提示配置模型或改用 `--scaffold`。
+
+调用示例：
+
+```bash
+paper-repro run --stage literature --run-dir runs/my-paper
+```
+
+离线脚手架示例：
+
+```bash
+paper-repro run --stage literature --run-dir runs/my-paper --scaffold
+```
+
+## Project Layout
+
+```text
+.
+├── README.md
+├── agent工作流.md
+├── pyproject.toml
+├── paper-repro-orchestrator/
+│   ├── references/        # 阶段提示词、产物规范和模板
+│   └── scripts/           # PDF 抽取、产物检查和产物汇总脚本
+├── src/
+│   ├── README.md          # 源码模块说明和调用链
+│   └── paper_repro_agent/
+│       ├── cli.py         # CLI 入口
+│       ├── stages.py      # 阶段执行、脚手架生成和报告生成
+│       ├── agent.py       # LangChain Agent 构建
+│       ├── tools.py       # PDF、检索、读写和汇总工具
+│       ├── review_agent.py # 审阅报告生成
+│       ├── state.py       # 工作流状态
+│       ├── memory.py      # 长期记忆和阶段笔记
+│       └── paths.py       # 运行目录解析
+└── tests/
+    ├── 2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf
+    └── test_*.py
+```
+
+## Run Directory Layout
+
+每篇论文建议对应一个运行目录，例如 `runs/my-paper/`：
+
+```text
+runs/my-paper/
+├── paper.pdf
+├── outputs/
+│   ├── literature_sources.md      # 文献、代码源和数据源调查
+│   ├── reproduction_spec.md       # 论文精读和复现规格
+│   ├── programs.md                # 各复现程序功能说明
+│   ├── report.md                  # 结果对比与复现状态报告
+│   ├── review.md                  # 审阅 Agent 报告
+│   ├── memory.md                  # 长期记忆
+│   ├── stage_notes.md             # 阶段笔记
+│   ├── state.json                 # 机器可读工作流状态
+│   ├── paper_text.txt             # PDF 抽取文本
+│   ├── tables/
+│   │   └── results.csv            # 默认结果对比表
+│   └── figures/                   # 复现图像
+└── reproduction/
+    ├── main.py                    # 整体比较主程序
+    ├── data.py                    # 数据加载入口
+    ├── metrics.py                 # 指标整理入口
+    ├── config.json                # 数据、方法、指标和随机种子配置
+    └── methods/
+        ├── baseline.py            # 基线方法
+        └── proposed.py            # 论文核心方法
+```
+
+## Reports
+
+- `outputs/report.md`：结果对比与复现状态报告，汇总运行命令、结果表、图表数量、产物清单和风险。
+- `outputs/programs.md`：复现程序功能说明报告，解释 `reproduction/` 中每个程序的用途、关系和调用顺序。
+- `outputs/review.md`：审阅 Agent 报告，检查程序结构、图表/表格数量、空文件、数据真实性和 scaffold/todo 风险。
+
+离线脚手架模式会保留 `todo` 或 `not_run` 标记，不会把占位输出伪装成真实论文结果。
+
+## Review Agent
+
+生成审阅报告：
+
+```bash
+paper-repro review --run-dir runs/my-paper
+```
+
+审阅内容：
+
+- 方法程序是否完整且可由主程序调用。
+- 图片和表格数量、文件是否非空。
+- 图表/表格是否能与 `outputs/reproduction_spec.md` 对应。
+- `outputs/tables/results.csv` 是否来自真实运行，是否仍存在 scaffold、proxy、todo 或空复现值。
+- 最终结论：通过、有条件通过或不通过。
+
+安装 `langgraph` 时优先使用 LangGraph 子图；缺少该依赖时自动降级为顺序审阅函数，输出仍为 `outputs/review.md`。
+
+## Smoke Test
+
+可用任意 PDF 验证文件夹式流程：
+
+```powershell
+mkdir runs/readme_smoke
+Copy-Item "path\to\paper.pdf" runs/readme_smoke\paper.pdf
+
+$env:PYTHONPATH="src"
+python -m paper_repro_agent.cli run --stage literature --run-dir runs/readme_smoke --scaffold
+python -m paper_repro_agent.cli run --stage reading --run-dir runs/readme_smoke --scaffold
+python -m paper_repro_agent.cli run --stage baseline --run-dir runs/readme_smoke --scaffold
+python -m paper_repro_agent.cli run --stage core --run-dir runs/readme_smoke --scaffold
+python -m paper_repro_agent.cli run --stage validation --run-dir runs/readme_smoke --scaffold
+python -m paper_repro_agent.cli review --run-dir runs/readme_smoke
+```
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+## Notes
+
+- 长训练、下载数据或安装重依赖前，应先人工确认数据许可和复现范围。
+- 第三方代码和数据不应在未确认 license 的情况下直接提交到仓库。
+- 真实复现值必须来自 `reproduction/main.py` 或等价可追溯程序运行。

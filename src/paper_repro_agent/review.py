@@ -17,14 +17,14 @@ class StageReview:
 
 def render_review(review: StageReview) -> str:
     upcoming = next_stage(review.stage)
-    upcoming_text = STAGE_LABELS[upcoming] if upcoming else "全部阶段已完成"
+    upcoming_text = STAGE_LABELS[upcoming] if upcoming else "全部阶段已完成，可运行 `paper-repro review` 生成总审阅报告。"
     lines = [
         f"# 阶段审查包：{STAGE_LABELS.get(review.stage, review.stage)}",
         "",
         "本阶段完成：",
         *_as_bullets(review.completed),
         "",
-        "生成文件：",
+        "生成或更新文件：",
         *_as_bullets(review.generated_files),
         "",
         "关键结果：",
@@ -36,7 +36,7 @@ def render_review(review: StageReview) -> str:
         "记忆更新：",
         *_as_bullets(review.memory_updates or ["本阶段没有新的长期记忆变化。"]),
         "",
-        "下一阶段：",
+        "下一步：",
         f"- {upcoming_text}",
         "",
         "审查提示：本工具会在每个阶段结束后停止。确认无误后，请显式运行下一阶段命令。",

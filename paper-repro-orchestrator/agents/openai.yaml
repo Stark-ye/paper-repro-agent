@@ -1,4 +1,10 @@
-interface:
-  display_name: "论文复现总控"
-  short_description: "一个入口完成分阶段论文复现"
-  default_prompt: "使用 $paper-repro-orchestrator 复现这篇论文，先生成计划并逐阶段等待我审核。"
+provider: openai-compatible
+env:
+  model: PAPER_REPRO_MODEL
+  api_key: PAPER_REPRO_API_KEY
+  base_url: PAPER_REPRO_BASE_URL
+fallback_env:
+  api_key: OPENAI_API_KEY
+  base_url: OPENAI_BASE_URL
+notes:
+  - OpenAI, Qwen and other OpenAI-compatible chat APIs can be used through the same adapter.

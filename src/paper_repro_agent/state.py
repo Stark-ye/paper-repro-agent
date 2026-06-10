@@ -22,7 +22,7 @@ STAGE_LABELS: dict[str, str] = {
     "reading": "论文精读与复现规格",
     "baseline": "基线方法实现",
     "core": "核心方法实现",
-    "figures": "图表与表格复现",
+    "figures": "图表与表格整理",
     "validation": "验证与中文报告",
 }
 

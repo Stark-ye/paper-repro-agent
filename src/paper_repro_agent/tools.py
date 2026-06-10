@@ -53,13 +53,21 @@ def write_workspace_file(path: str, content: str) -> str:
 def extract_pdf_text(pdf_path: str, out_path: str = "outputs/paper_text.txt") -> str:
     """Extract PDF text with the bundled extraction script."""
     script = SCRIPTS_DIR / "extract_pdf_text.py"
+    context = run_context_from_env()
     output = _safe_workspace_path(out_path, allowed_roots=("outputs",))
     raw_pdf = Path(pdf_path)
-    source = raw_pdf.resolve() if raw_pdf.is_absolute() else (REPO_ROOT / raw_pdf).resolve()
-    cmd = [sys.executable, str(script), str(source), "--out", str(output)]
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+    if raw_pdf.is_absolute():
+        source = raw_pdf.resolve()
+    else:
+        candidates = [(REPO_ROOT / raw_pdf).resolve(), (context.root_dir / raw_pdf).resolve()]
+        source = next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+    if script.exists():
+        cmd = [sys.executable, str(script), str(source), "--out", str(output)]
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        return f"Extracted PDF text to {_display_path(output)}"
+    _extract_pdf_text_fallback(source, output)
     return f"Extracted PDF text to {_display_path(output)}"
 
 
@@ -69,6 +77,8 @@ def check_outputs(outputs: str = "outputs") -> str:
     context = run_context_from_env()
     raw_outputs = Path(outputs)
     outputs_path = raw_outputs.resolve() if raw_outputs.is_absolute() else (context.root_dir / raw_outputs).resolve()
+    if not script.exists():
+        return _check_outputs_fallback(outputs_path)
     cmd = [sys.executable, str(script), "--outputs", str(outputs_path)]
     result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     text = (result.stdout + "\n" + result.stderr).strip()
@@ -82,6 +92,9 @@ def summarize_artifacts(out_path: str = "outputs/artifacts_summary.md") -> str:
     script = SCRIPTS_DIR / "summarize_artifacts.py"
     context = run_context_from_env()
     output = _safe_workspace_path(out_path, allowed_roots=("outputs",))
+    if not script.exists():
+        _summarize_artifacts_fallback(context.outputs_dir, output)
+        return f"Wrote {_display_path(output)}"
     cmd = [
         sys.executable,
         str(script),
@@ -162,4 +175,55 @@ def _display_path(path: Path) -> str:
     try:
         return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
+
+
+def _extract_pdf_text_fallback(source: Path, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not source.exists():
+        raise FileNotFoundError(f"PDF file not found: {source}")
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        output.write_text(
+            "PDF text extraction is unavailable because `pypdf` is not installed. "
+            "Install with `pip install -e .[pdf]` and rerun the reading stage.\n",
+            encoding="utf-8",
+        )
+        return
+
+    reader = PdfReader(str(source))
+    chunks = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        chunks.append(f"\n\n# Page {index}\n\n{text}")
+    output.write_text("".join(chunks).strip() + "\n", encoding="utf-8")
+
+
+def _check_outputs_fallback(outputs_path: Path) -> str:
+    figures = sorted((outputs_path / "figures").glob("*")) if (outputs_path / "figures").exists() else []
+    tables = sorted((outputs_path / "tables").glob("*")) if (outputs_path / "tables").exists() else []
+    figure_files = [path for path in figures if path.is_file()]
+    table_files = [path for path in tables if path.is_file()]
+    empty = [path for path in figure_files + table_files if path.stat().st_size == 0]
+    lines = [
+        f"Figures: {len(figure_files)}",
+        f"Tables: {len(table_files)}",
+        f"Empty files: {len(empty)}",
+    ]
+    if empty:
+        lines.append("Empty file paths: " + ", ".join(_display_path(path) for path in empty))
+    return "\n".join(lines)
+
+
+def _summarize_artifacts_fallback(outputs_dir: Path, output: Path) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    files = sorted(path for path in outputs_dir.rglob("*") if path.is_file() and path.resolve() != output.resolve())
+    lines = ["# 产物清单", ""]
+    if not files:
+        lines.append("- 暂无产物。")
+    else:
+        for path in files:
+            rel = path.resolve().relative_to(outputs_dir.resolve()).as_posix()
+            lines.append(f"- `{rel}` ({path.stat().st_size} bytes)")
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")

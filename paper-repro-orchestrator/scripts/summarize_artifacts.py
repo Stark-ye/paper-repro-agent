@@ -1,45 +1,24 @@
-#!/usr/bin/env python
-"""Summarize paper reproduction artifacts as Markdown."""
-
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
 
-def list_files(root: Path, pattern: str) -> list[Path]:
-    if not root.exists():
-        return []
-    return sorted(path for path in root.glob(pattern) if path.is_file())
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Summarize outputs.")
-    parser.add_argument("--outputs", type=Path, default=Path("outputs"))
-    parser.add_argument("--out", type=Path)
+    parser = argparse.ArgumentParser(description="Summarize output artifacts as Markdown.")
+    parser.add_argument("--outputs", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    lines = ["# 复现产物清单", ""]
-    for title, subdir, pattern in [
-        ("图片", "figures", "*"),
-        ("表格", "tables", "*.csv"),
-    ]:
-        lines.extend([f"## {title}", ""])
-        files = list_files(args.outputs / subdir, pattern)
-        if not files:
-            lines.append("- 未找到")
-        else:
-            for path in files:
-                size = path.stat().st_size
-                lines.append(f"- `{path.as_posix()}` ({size} bytes)")
-        lines.append("")
-
-    text = "\n".join(lines)
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text, encoding="utf-8")
-    else:
-        print(text)
+    files = sorted(path for path in args.outputs.rglob("*") if path.is_file() and path.resolve() != args.out.resolve())
+    lines = ["# 产物清单", ""]
+    if not files:
+        lines.append("- 暂无产物。")
+    for path in files:
+        rel = path.resolve().relative_to(args.outputs.resolve()).as_posix()
+        lines.append(f"- `{rel}` ({path.stat().st_size} bytes)")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
