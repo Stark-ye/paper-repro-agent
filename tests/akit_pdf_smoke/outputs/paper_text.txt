@@ -1,0 +1,967 @@
+                                                    Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+                                                                   Contents lists available at ScienceDirect
+
+
+                                       Engineering Applications of Artificial Intelligence
+                                                       journal homepage: www.elsevier.com/locate/engappai
+
+
+Research paper
+
+Adaptive Kalman-Informed Transformer
+                         ∗
+Nadav Cohen                , Itzik Klein
+The Hatter Department of Marine Technologies, Charney School of Marine Sciences, University of Haifa, Haifa, Israel
+
+
+
+ARTICLE               INFO                                ABSTRACT
+
+Keywords:                                                 The extended Kalman filter (EKF) is a widely adopted method for sensor fusion in navigation applications. A
+Inertial sensing                                          crucial aspect of the EKF is the online determination of the process noise covariance matrix reflecting the model
+Navigation                                                uncertainty. While common EKF implementation assumes a constant process noise, in real-world scenarios, the
+Set transformer
+                                                          process noise varies, leading to inaccuracies in the estimated state and potentially causing the filter to diverge.
+Kalman filter
+                                                          Model-based adaptive EKF methods were proposed and demonstrated performance improvements to cope with
+Sensor fusion
+Autonomous underwater vehicle
+                                                          such situations, highlighting the need for a robust adaptive approach. In this paper, we derive an adaptive
+                                                          Kalman-informed transformer (A-KIT) designed to learn the varying process noise covariance online. Built
+                                                          upon the foundations of the EKF, A-KIT utilizes the well-known capabilities of set transformers, including
+                                                          inherent noise reduction and the ability to capture nonlinear behavior in the data. This approach is suitable
+                                                          for any application involving the EKF. In a case study, we demonstrate the effectiveness of A-KIT in nonlinear
+                                                          fusion between a Doppler velocity log and inertial sensors. This is accomplished using real data recorded from
+                                                          sensors mounted on an autonomous underwater vehicle operating in the Mediterranean Sea. We show that
+                                                          A-KIT outperforms the conventional EKF by more than 49.5% and model-based adaptive EKF by an average
+                                                          of 35.4% in terms of position accuracy.
+
+
+
+1. Introduction                                                                                2006; Farrell, 2008). As a result, noise identification becomes a critical
+                                                                                               component, giving rise to adaptive filtering.
+    The Kalman filter (KF) is renowned for its effectiveness in data                               The exploration of model-based adaptive KF dates back to 1970,
+fusion. It is acknowledged as an optimal state estimator designed for                          with Mehra (Mehra, 1970) introducing an approach to address opti-
+linear dynamic systems affected by Gaussian white noise (Bar-Shalom                            mal filtering for a linear time-invariant system characterized by un-
+et al., 2001). In real-life applications, the majority of systems exhibit                      known process noise covariance. Subsequently, additional approaches
+nonlinear behavior. Consequently, various extensions of the KF have                            emerged, categorized into four distinct groups: Bayesian inference,
+been developed, such as the extended Kalman filter (EKF) (Ribeiro,                             maximum likelihood estimation, covariance-matching, and correlation
+2004), unscented Kalman filter (UKF) (Wan and Van Der Merwe, 2000),                            methods. These approaches enhance state estimation performance in
+and others (Daum, 2005). These extensions are designed to effec-                               environments where noise characteristics are not constant, providing
+tively address nonlinear systems, albeit at the cost of sub-optimality.                        more accurate and reliable estimates compared to traditional Kalman
+As a result, variations of the KF have found applications in diverse
+                                                                                               filters. (Zhang et al., 2020).
+fields, including tracking, navigation, control, signal processing, and
+                                                                                                   Recent advances in hardware and computational efficiency have
+communication.
+                                                                                               demonstrated the utility of deep learning (DL) methods in address-
+    In the conventional KF framework, it is assumed that both process
+                                                                                               ing real-time applications. These applications span various domains,
+and measurement noise covariance matrices are known, well-defined
+                                                                                               including image processing, signal processing, and natural language
+and play a crucial role in conjunction with system dynamics to dictate
+                                                                                               processing. Leveraging the inherent capabilities of DL to handle non-
+the achievable accuracy of the filter (Heffes, 1966; Sangsuk-Iam and
+Bullock, 1990; Saab, 1995). However, in numerous practical scenar-                             linear problems, these methods have found integration into inertial
+ios, particularly when dealing with noisy feature data in nonlinear                            navigation algorithms. Accordingly, research initiatives have been ini-
+systems, the statistical properties of the noise covariances are fre-                          tiated to investigate the data-driven estimation of the process noise
+quently unknown or only partially discernible. Moreover, these proper-                         covariance matrix across various domains, including land, aerial, and
+ties may undergo changes throughout the duration of a mission (Simon,                          maritime applications (Li et al., 2021; Cohen and Klein, 2024).
+
+
+  ∗ Corresponding author.
+     E-mail address: ncohe140@campus.haifa.ac.il (N. Cohen).
+
+https://doi.org/10.1016/j.engappai.2025.110221
+Received 5 August 2024; Received in revised form 29 December 2024; Accepted 2 February 2025
+Available online 12 February 2025
+0952-1976/© 2025 The Authors. Published by Elsevier Ltd. This is an open access article under the CC BY license (http://creativecommons.org/licenses/by/4.0/).
+N. Cohen and I. Klein                                                                             Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+    In the standard navigation setting, a key method for obtaining an          noise matrix within an invariant EKF. This adaptation is achieved by
+accurate and reliable navigation solution involves the integration of          incorporating moderately priced IMU measurements (Brossard et al.,
+measurements from various sensors through the use of a nonlinear               2020). In an alternative approach, specifically designed for land vehi-
+filter, such as the EKF. The inertial measurement unit (IMU) data is           cles, reinforcement learning takes center stage, as elucidated in Gao
+processed through the inertial navigation system (INS) equations of mo-        et al. (2020). Wu et al. (2020) conducted a study where not only were
+tion to derive a continuous, high-rate navigation solution. This system,       the parameters of measurement noise covariances regressed, but also
+however, is characterized by error accumulation due to the inherent            the parameters of process noise covariances were predicted. This pre-
+nature of the inertial sensor. To mitigate this error, the EKF relies on       diction utilized a multitask temporal convolutional network (TCN), re-
+external observations from other sensors, such as the global navigation        sulting in superior position accuracy compared to traditional GNSS/INS
+satellite system (GNSS) or Doppler velocity log (DVL), to enhance the          integrated navigation systems. In a unique approach, Xiao et al. (2021)
+accuracy of the navigation solution (Chatfield, 1997; Titterton et al.,        introduced a residual network incorporating an attention mechanism
+2004; Abosekeen et al., 2019).                                                 specifically designed to predict individual velocity elements of the noise
+    In this paper, we propose a novel approach named A-KIT, an adap-           covariance matrix, with a focus on land vehicle applications.
+tive Kalman-informed transformer. Built upon a set-transformer net-                For aerial platforms, a CNN-based adaptive Kalman filter was pro-
+work, A-KIT is designed for real-time adaptive regression of the process       posed by Zou et al. (2020) to enhance high-speed navigation using
+noise covariance matrix. Using a set-transformer for estimating process        low-cost IMU. The study introduces a 1D CNN approach to predict
+                                                                               3D acceleration and angular velocity noise covariance information. In
+noise covariance offers advantages such as permutation invariance,
+                                                                               subsequent work, Or and Klein Or and Klein (2022a) introduced a data-
+ensuring consistent results when handling asynchronously arriving data
+                                                                               driven, adaptive noise covariance approach for an error state EKF in
+or data without a meaningful sequence. It effectively models complex
+                                                                               INS/GNSS fusion. The information obtained was utilized to enhance
+dependencies by capturing correlations between system states or sen-
+                                                                               the navigation of a quadrotor drone. In the visual-inertial odometry
+sors through self-attention. Furthermore, it demonstrates resilience to
+                                                                               (VIO) task for micro aerial vehicles, dynamically estimating the inertial
+noise and missing data by emphasizing the most relevant inputs using
+                                                                               noise uncertainty using a dedicated deep neural network improved
+attention mechanisms. The set-transformer generalizes well, integrates
+                                                                               the accuracy and robustness of the VIO algorithm (Solodar and Klein,
+heterogeneous data sources, and avoids strong distributional assump-
+                                                                               2024).
+tions, making it a promising choice for learning covariance in complex,
+                                                                                   When examining autonomous underwater vehicle (AUV) navigation
+high-dimensional, or nonlinear systems as will be discussed in more            with INS/DVL sensor fusion, Huang et al. (2023) proposed the utiliza-
+detail throughout the paper. The study showcases A-KIT’s superiority,          tion of a long short-term memory (LSTM) network to estimate the initial
+outperforming both the conventional EKF and various state-of-the-              and constant process noise covariance matrix. Their work demonstrated
+art, model-based, adaptive EKF approaches in an INS/DVL fusion case            significant improvement over conventional EKF approaches. Or and
+study. The key contributions of this paper include:                            Klein (2022a,b, 2023b) devised an adaptive EKF customized for veloc-
+                                                                               ity updates in INS/DVL fusions. Initially, they highlighted the efficacy
+    1. The introduction of A-KIT, a hybrid algorithm combining the
+                                                                               of correcting the noise covariance matrix through a 1D CNN, utilizing a
+       strengths of the well-established EKF and leveraging well-known
+                                                                               classification approach to predict the variance at each sample time. This
+       DL characteristics, such as noise reduction, for improved perfor-
+                                                                               correction method resulted in substantial improvements in navigation
+       mance.                                                                  results. In their most recent work, the authors introduced a novel
+    2. A novel Kalman-informed loss configuration designed to emulate          approach that employs regression instead of classification to achieve
+       the principles of the KF, enhancing the accuracy of the process         the same objective. However, a crucial observation must be noted,
+       noise covariance.                                                       while the approach demonstrated success when tested on simulated
+    3. A GitHub repository containing experiment data and code for             data, its performance did not translate effectively when applied to
+       implementing the A-KIT architecture. The repository serves as           real-world data obtained from an AUV.
+       a comprehensive resource for researchers and practitioners in-              In the exploration of related work, Haarnoja et al. (2016) were
+       terested in replicating or further exploring the proposed A-KIT         pioneers in examining a closed-loop KF solution. They approached the
+       algorithm.                                                              problem by drawing parallels to recurrent neural networks (RNNs) and
+    The remainder of the paper is organized as follows: In Section 2, we       highlighted the necessity of implementing a back-propagation through
+discuss related work. Section 3 delves into the theoretical and math-          time approach, emphasizing its computational cost. Their methodology
+ematical background of model-based adaptive estimation. Section 4              was tested for solving the visual odometry problem, and the designed
+                                                                               1D CNN provided the updated measurement and the measurement
+introduces the components of the set-transformer architecture. In Sec-
+                                                                               noise covariance. In Jouaber et al. (2021), the authors address a
+tion 5, we present the proposed A-KIT approach. Section 6 establishes
+                                                                               constant velocity model in a linear Kalman Filter for tracking applica-
+the case study of the INS/DVL sensor fusion and discusses the imple-
+                                                                               tions. This approach is evaluated solely on simulated data. Additional
+mentation and integration of A-KIT into this problem. In Section 7, the
+                                                                               work on process noise covariance estimation in a linear Kalman filter
+dataset acquisition process is detailed, along with an in-depth analysis
+                                                                               addressed the problem of vehicle trajectory uncertainty (Or and Klein,
+of the results. Finally, Section 8 discusses the conclusions.
+                                                                               2023a).
+2. Related work                                                                3. Model-based adaptive estimation
+
+    When examining model-based adaptive KF approaches, various                    A prevalent method for conducting state estimation with a given
+studies have demonstrated improvements in INS and GNSS navigation              model and set of observations is the KF. In accordance with the theory,
+across different platforms using innovation-based adaptive KF (Mohamed         the filter leads to the optimal linear state estimator that minimizes
+and Schwarz, 1999; Hide et al., 2003; Liu et al., 2018; Shen et al.,           the mean square error under Gaussian assumptions (Bar-Shalom et al.,
+2022). Additionally, the effectiveness of adaptive KFs in INS/DVL              2001; Simon, 2006). However, assuming a linear model in real-world
+applications has been showcased in works such as (Gao et al., 2015;            applications such as navigation and control is unrealistic, as these
+Wang et al., 2020; Silva et al., 2022; Wang et al., 2023; Or and Klein,        scenarios typically involve nonlinear problems. To address this, an
+2023b).                                                                        extension of the linear Kalman Filter, known as the EKF, capable of
+    For land-based navigation in the context of terrestrial vehicles,          handling nonlinear problems, was introduced (Groves, 2015). In this
+Brossard, Barrau, and Bonnabel proposed a method that utilizes convo-          section, a concise theoretical background is presented, introducing both
+lutional neural networks (CNNs) to dynamically adjust the covariance           the error-state EKF and the adaptive error-state EKF.
+
+                                                                           2
+N. Cohen and I. Klein                                                                                     Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+3.1. Conventional Extended Kalman Filter                                              where 𝒉(𝒙) represents the update equations characterized by nonlinear
+                                                                                      functions of the state vector.
+   We describe the error-state implementation of the EKF (ES-EKF).
+To that end, consider 𝜹𝒙 ∈ R𝑛×1 , an 𝑛-dimensional error-state vector,                3.2. Adaptive error-state extended Kalman filter
+defined as follows:
+                                                                                          The conventional ES-EKF initializes the noise covariance matrices,
+𝒙𝑡 = 𝒙𝑒 − 𝜹𝒙                                                                (1)
+                                                                                      𝐐 and 𝐑, based on prior assumptions about model and measure-
+where 𝒙𝑡 ∈ R𝑛×1 and 𝒙𝑒 ∈ R𝑛×1 are the true state and the estimated                    ment uncertainties. Once initialized, these matrices remain constant
+state, respectively. In the EKF, the underlying assumption is that the                throughout the estimation process. However, it has been shown in
+error in the state vector estimate is substantially smaller than the state            the literature that when the measurement noise covariances are un-
+vector. This condition facilitates the application of a linear system                 known or varying in time, the adaptive approach outperforms the
+model to the state vector residual:                                                   conventional one (Mohamed and Schwarz, 1999). Specifically, we look
+𝜹𝒙̇ = 𝐅𝜹𝒙 + 𝐆𝒏                                                              (2)       at the innovation-based adaptive estimation (IAE) approach window,
+                                                                                      commonly used in different applications (Mehra, 1972). The covari-
+where 𝒏 ∈      R𝑛×1 is the system noise vector, 𝐅 ∈          R𝑛×𝑛 is the system       ance matrix 𝐐𝑘 is adjusted as measurements evolve over time. This
+matrix, and 𝐆 ∈ R𝑛×𝑛 is the system noise distribution (shaping) matrix.               adaptation of the filter’s statistical information matrix is guided by the
+The Kalman filtering process typically involves two distinct phases: the              whiteness of the filter’s innovation sequence and takes the following
+prediction and update steps.                                                          form:
+   In the prediction step, the a priori error state, 𝛿𝒙− , is considered              ̂ 𝑘 = 𝐊𝑘 𝐂
+                                                                                               ̂ 𝑣 𝐊𝑇 .
+                                                                                      𝐐           𝑘 𝑘
+                                                                                                                                                                        (13)
+equal to zero to facilitate linearization, a crucial aspect of the EKF
+method. The state covariance is then propagated using the known                                    ̂ 𝑣 , we perform averaging within a moving estimation
+                                                                                      To calculate 𝐂  𝑘
+model:                                                                                window of size 𝑁. This process is carried out as follows:
+𝛿𝒙− = 0                                                                     (3)              ∑𝑘
+                                                                                      ̂𝑣 = 1
+                                                                                      𝐂          𝜹𝒛𝑗 𝜹𝒛𝑇𝑗                                                               (14)
+                                                                                        𝑘  𝑁 𝑗=𝑗
+                                                                                                   0
+𝐏−         +    𝑇
+ 𝑘 = Φ𝑘−1 𝐏𝑘−1 Φ𝑘−1 + 𝐐𝑘−1                                                  (4)
+                                                                                      where 𝑗0 = 𝑘−𝑁 + 1 is the first iteration of the process noise covariance
+where 𝐏−
+       𝑘
+         is the a priori state covariance estimate at time 𝑘 and 𝐏+
+                                                                  𝑘−1
+                                                                      is              estimation. Eq. (13) is used to replace the constant process evaluation
+the a posteriori state covariance estimate at time 𝑘 − 1. The transition              (8) inside the conventional ES-EKF.
+matrix, denoted as Φ𝑘−1 , is typically derived through a power-series                     The approach outlined above represents the fundamental adaptive
+expansion of the system matrix, 𝐅, and the propagation interval, 𝜏𝑠 :                 method. Over time, the literature has introduced various alternative
+        ∑∞ 𝐅𝑟
+              𝑘−1 𝑟                                                                   approaches. In this context, we elucidate two of these variations to
+Φ𝑘−1 =            𝜏                                                  (5)
+              𝑟! 𝑠                                                                    provide a comparative foundation for the suggested approach. The first
+        𝑟=0
+                                                                                      approach is described in Ding et al. (2007), Almagbile et al. (2010) and
+and 𝐅𝑘−1 is defined as:                                                               seeks to scale to process noise covariance. The scaling factor is defined
+       𝜕𝒇 (𝒙)                                                                         as:
+𝐅𝑘−1 =        | 𝑒                                                     (6)                         (                        )
+         𝜕𝒙 𝑥=𝑥
+                                                                                           Tr {𝐇𝑘 Φ𝑘−1 𝐏+    Φ𝑇 + 𝐐
+                                                                                                          𝑘−1 𝑘−1
+                                                                                                                     ̂ 𝑘−1 𝐇𝑇 }
+                                                                                                                               𝑘
+where 𝒇 (𝒙) is the nonlinear function of the state propagation. The exact             𝛽=          (                        ) 𝑇                             (15)
+form of the system noise covariance matrix is (Groves, 2015):                              Tr {𝐇𝑘 Φ𝑘−1 𝐏+    Φ 𝑇  + 𝐐  𝑘−1   𝐇   }
+          ( 𝑡        𝑡
+                                                                                                          𝑘−1 𝑘−1              𝑘
+
+𝐐𝑘−1 = E               Φ (𝑡 − 𝑡′ )𝐆𝑘−1 𝒏(𝑡′ )                                         and the adaptation rule is defined as:
+            ∫𝑡−𝜏𝑠 ∫𝑡−𝜏𝑠 𝑘−1                                                                      √
+                                              )                       (7)             ̂𝑘 =𝐐
+                                                                                      𝐐     ̂ 𝑘−1 𝛽 .                                                                   (16)
+                𝒏𝑇 (𝑡′′ )𝐆𝑇𝑘−1 Φ𝑇𝑘−1 (𝑡 − 𝑡′′ ) 𝜕 𝑡′ 𝜕 𝑡′′
+
+which is usually approximated and can be written as follows (Gelb                         The third adaptive approach utilizes a forgetting factor 𝛾 to average
+et al., 1974):                                                                        estimates of 𝐐𝑘 over time (Akhlaghi et al., 2017):
+         1(                                    )                                                           ̂ 𝑘−1
+                                                                                      ̂ 𝑘 = 𝛾𝐐𝑘−1 + (1 − 𝛾)𝐐
+                                                                                      𝐐                                                                                 (17)
+𝐐𝑘−1 =     Φ𝑘−1 𝐆𝑘−1 𝐐𝐆𝑇𝑘−1 + 𝐆𝑘−1 𝐐𝐆𝑇𝑘−1 Φ𝑇𝑘−1 𝛥𝑡.           (8)
+         2
+                                                                                      where the manually tuned factor 𝛾 satisfies 0 ≤ 𝛾 ≤ 1. A larger value of
+   The next phase is the update step, which is executed by the follow-                𝛾 places more weight on previous estimates, incurring less fluctuation
+ing equations:                                                                        in the current estimate but resulting in longer time delays to catch up
+            (             )−1                                                         with changes.
+𝐊𝑘 = 𝐏−   𝑇     − 𝑇
+       𝑘 𝐇𝑘 𝐇𝑘 𝐏𝑘 𝐇𝑘 + 𝐑𝑘                                           (9)                   It is worth mentioning that this paper focuses only on the adaptive
+                                                                                      process noise covariance matrix, as the literature allows for the flexi-
+𝐏+
+ 𝑘
+   = [𝐈 − 𝐊𝑘 𝐇𝑘 ]𝐏−
+                  𝑘                                                        (10)       bility to adapt the process noise, measurement noise, or both. Since the
+                                                                                      Kalman gain — responsible for optimally balancing the uncertainty be-
+𝜹𝒙+
+  𝑘
+    = 𝐊𝑘 𝜹𝒛𝑘                                                               (11)       tween the predicted state and the measurement — is proportional to the
+                                                                                      process noise covariance multiplied by the inverse of the measurement
+where 𝐊𝑘 is the Kalman gain, dictating the balance between incor-
+                                                                                      noise covariance, adapting the process noise covariance is sufficient to
+porating new measurements and the predictions generated by the
+                                                                                      yield superior results (Bar-Shalom et al., 2001).
+system’s dynamic model. The 𝐇𝑘 and 𝐑𝑘 matrices correspond to the
+measurement matrix and the covariance matrix of measurement noise,
+                                                                                      4. Set-transformer
+respectively. Lastly, 𝜹𝒙+
+                        𝑘
+                          and 𝐏+𝑘
+                                   are the a posteriori error state and
+estimated covariance state, respectively. The measurement innovation,
+                                                                                          This section reviews the building blocks of the set-transformer
+𝜹𝒛𝑘 , is the residual between the state given by the model and the
+                                                                                      designed to handle time-series data. The adoption of set-transformer
+measurement provided by the observation. The measurement matrix,
+                                                                                      for estimating the process noise covariance leverages their intrinsic
+𝐇𝑘 , is defined by:
+                                                                                      permutation invariance and robust handling of variable-sized input
+       𝜕𝒉(𝒙)
+𝐇𝑘 =         | 𝑒                                                    (12)              sets, aligning with the diverse and unordered nature of sensor data
+         𝜕𝒙 𝑥=𝑥
+
+                                                                                  3
+N. Cohen and I. Klein                                                                                   Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+inherent in such tasks. This architecture, distinguished by its attention            4.4. Set attention block
+mechanism, adeptly captures complex interdependencies among sensor
+inputs, facilitating a nuanced understanding of the underlying process                   The multihead attention block (MAB) represents a pivotal modifi-
+dynamics. Consequently, set-transformers offer a sophisticated, end-                 cation to the core encoder block of the transformer architecture, as
+to-end trainable framework that enhances estimation accuracy and                     originally introduced by Vaswani et al. (2017). This adaptation, charac-
+robustness, rendering them highly suitable for advanced navigation                   terized by the removal of positional encoding and dropout operations,
+systems where precision and adaptability are required.                               is designed to harness the intrinsic power of self-attention mechanisms.
+                                                                                     In the context of MAB, two matrices, 𝐗 and 𝐘, both residing in R𝑛×𝑑 ,
+                                                                                     play a central role. The parameter 𝐋 is defined as follows:
+4.1. Patch embedding
+                                                                                     𝐋 = LayerNorm(𝐗 + Multihead(𝐗, 𝐘, 𝐘)).                                           (22)
+    Following the approach recommended by Dosovitskiy et al. (2020),
+the data undergoes a preprocessing step wherein it is partitioned into                  The MAB is an integral component of our architecture, defined as
+patches, flattened, and subsequently subjected to a one-dimensional
+convolution operation. This convolution operation employs a kernel                   MAB(𝐗, 𝐘) = LayerNorm(𝐋 + FFN(𝐋)).                                               (23)
+size denoted as 𝛼 and a stride size as 𝛽, and utilizes patch sizes
+represented by 𝛾. The outcome of this patch embedding process is                         In this context, FFN denotes a fully connected, feed-forward net-
+denoted as 𝐱𝑝 and resides in R𝑁×𝐷 , where 𝑁 signifies the number of                  work. Specifically, it comprises a layer that expands the dimensionality
+samples produced by the one-dimensional convolution layer, and 𝐷                     to the size specified by the hyper-parameter 𝑓 𝑓 𝑒, which corresponds
+corresponds to the number of filters employed by the layer and also                  to the feed-forward expansion. Following the application of a rectified
+establishes the latent space dimension that is subsequently input into               linear unit (ReLU) activation function, the second layer restores the
+the set-transformer blocks.                                                          data to its original dimension:
+                                                                                     FFN(𝐗) = max(0, 𝐗𝑊1 + 𝑏1 )𝑊2 + 𝑏2                                                (24)
+4.2. Attention
+                                                                                     where 𝑊𝑗 and 𝑏𝑗 are the weights and biases, respectively, such that
+   The attention mechanism is formally defined by the equation                       𝑗 ∈ {1, 2}.
+                            (     )                                                      The set attention block (SAB) assumes the crucial role of performing
+                              𝐐𝐊𝑇                                                    self-attention operations among elements within the set. Importantly, it
+𝐴𝑡𝑡𝑒𝑛𝑡𝑖𝑜𝑛(𝐐, 𝐊, 𝐕) = Softmax √      𝐕 ∈ R𝑛×𝑑𝑣 .                (18)
+                               𝑑𝑞                                                    can be succinctly defined by invoking the MAB:
+Here, 𝐐 represents 𝑛 query vectors of size 𝑑𝑞 in R𝑛×𝑑𝑞 , and 𝐊 and                   𝑆 𝐴𝐵(𝐗) ∶= MAB(𝐗, 𝐗).                                                            (25)
+𝐕 denote 𝑛𝑣 key–value pairs in R𝑛𝑣 ×𝑑𝑞 and R𝑛𝑣 ×𝑑𝑣 , respectively. The
+dimension of the values vector is denoted as 𝑑𝑣 .
+                                                                                         This architectural adaptation facilitates a holistic understanding of
+   The Softmax function, as described in Goodfellow et al. (2016), is                relationships among set elements, significantly enhancing the model’s
+expressed as                                                                         representational capacity.
+                  𝑒𝑍 𝚤̇
+Softmax(𝒁)𝚤̇ = ∑𝑀           .                                      (19)
+                        𝑍𝚥̇
+                 𝑛=1 𝑒
+                                                                                     4.5. Pooling by multihead attention
+In this equation, 𝑀 denotes the number of vectors.
+                                                                                         This block introduces a learnable aggregation mechanism by estab-
+                                                                                     lishing a set of 𝑘 vectors, each with a size of 𝑛, which are subsequently
+4.3. Multihead attention                                                             organized into a matrix denoted as 𝐒 ∈ R𝑘×𝑛 . In this context, assuming
+                                                                                     that an encoder generates a set of features represented as 𝐙 ∈ R𝑛×𝑑 , the
+    Multiheads are introduced to extend the capabilities of the attention            pooling by multi-head attention block (PMA) is defined as follows:
+mechanism. In this model, query vectors (𝐐), key vectors (𝐊), and value
+                                                                                     𝑃 𝑀 𝐴𝑘 (𝐙) = 𝑀 𝐴𝐵(𝐒, FFN(𝐙))                                                     (26)
+vectors (𝐕) are projected onto ℎ different heads, each having dimen-
+sions 𝑑́𝑞 , 𝑑́𝑞 , and 𝑑́𝑣 , respectively. The previously described attention         where 𝑘 represents a tunable hyper-parameter integral to the function-
+mechanism in (18) is then independently applied to each of these ℎ                   ality of this block.
+projections.
+    This multi-head attention mechanism allows the model to effec-                   4.6. Overall architecture
+tively incorporate information from various representation subspaces
+and positions, enhancing its capacity to capture diverse patterns in the                 The architectural framework comprises an encoder followed by a
+data.                                                                                decoder. Given an input matrix 𝐗 ∈ R𝑛×𝑑 , the encoder generates
+    Within this model, trainable parameters 𝐖𝑄              𝐾 ∈ R𝑑𝑞 ×𝑑́𝑞 , and       the feature matrix 𝐙 ∈ R𝑛×𝑑 . The encoder’s composition involves the
+                                                      𝚥̇ , 𝐖𝚥̇
+              ́                                                                      stacking of set attention block (SAB) modules, as indicated in (25):
+𝐖𝑉𝚥̇ ∈ R𝑑𝑣 ×𝑑𝑣 are employed in the following manner:
+                                                                                     𝐙 = Encoder(𝐗) = 𝑆 𝐴𝐵1 ◦...◦𝑆 𝐴𝐵𝑏 (𝐗).                                           (27)
+ℎ𝑒𝑎𝑑𝚥̇ = Attention(𝐐𝐖𝚥𝑄̇ , 𝐊𝐖𝐾      𝑉
+                             𝚥̇ , 𝐕𝐖𝚥̇ ), 𝚥̇ = 1, … , ℎ.                 (20)
+
+                                                                                         Subsequently, the decoder utilizes a learnable aggregation scheme
+   These multiple heads are then linked together in a sequential man-                to transform 𝐙 into a set of vectors that traverse a feed-forward network
+                                                      ́
+ner and are scaled by a trainable parameter 𝐖𝑂 ∈ Rℎ𝑑𝑣 ×𝑑 , resulting in              to produce the final outputs:
+the following expression:
+                                                                                     Decoder(𝐙) = ◦...◦FFN𝑏 (SAB(𝑃 𝑀 𝐴𝑘 (𝐙))) ∈ R𝑘×𝑑                                  (28)
+Multihead(𝐐, 𝐊, 𝐕) = concatenate(ℎ𝑒𝑎𝑑1 , … , ℎ𝑒𝑎𝑑ℎ )𝐖𝑂 .                 (21)
+                                                                                     where 𝑏 signifies the number of stacked blocks. A more detailed
+                                                                                     overview of the connections between the blocks is presented in the
+    A common choice for the hyperparameters in terms of dimensions                   set-transformer original paper. (Lee et al., 2019).
+         𝑑          𝑑
+is 𝑑́𝑞 = ℎ𝑞 , 𝑑́𝑣 = ℎ𝑣 , and 𝑑 = 𝑑𝑞 . These choices help manage the                      In summary, the critical hyperparameters that require specification
+dimensionality of the multihead attention mechanism effectively.                     within these blocks encompass:
+
+                                                                                 4
+N. Cohen and I. Klein                                                                                  Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+    • 𝛼 - Kernel size for patch embedding                                        process noise covariance matrix that minimizes the mean squared error
+    • 𝛽 - Stride size for patch embedding                                        of the measured state? The choice to focus on the measured state rather
+    • 𝛾 - Patch size for patch embedding                                         than other navigation parameters stems from its status as an observ-
+    • 𝐷 - Number of filters in the 1D convolution layer                          able state. The algorithm for the Kalman-informed loss is outlined in
+    • 𝑑 - Latent space dimension, equating to 𝐷                                  Algorithm 1.
+    • ℎ - Number of attention heads
+    • 𝑓 𝑓 𝑒 - Feed-forward expansion                                             Algorithm 1: Kalman-informed loss
+    • 𝑏 - Number of stacked SAB blocks
+                                                                                       Input: 𝐐𝐴−𝐾 𝐼 𝑇 , 𝐏+      , 𝚽𝑘 , 𝐇𝑘 , 𝒙𝑛𝐸 𝐾 𝐹 , 𝜹𝒛𝑘 , 𝐑𝑘 , 𝒙𝑛𝐺𝑇
+    • 𝑘 - Number of trainable vectors for aggregation                                                        𝑘−1
+                                                                                     1 for 𝑘 ← 1 to 𝑇 do
+    It is noteworthy that the original set-transformer, initially designed           2      𝐏−
+                                                                                             𝑘
+                                                                                               = 𝚽𝑘 𝐏+ 𝑘−1 𝑘
+                                                                                                            𝚽𝑇 + 𝐐𝐴−𝐾 𝐼 𝑇 ;
+for natural language processing to handle vectorized words within an                                 (
+                                                                                                − 𝑇 𝐇 𝐏− 𝐇𝑇 + 𝐑 −1 ;
+                                                                                                                          )
+                                                                                     3 𝐊𝑇 = 𝐏 𝐇          𝑇 𝑇 𝑇          𝑇
+injective vocabulary, has been adapted for one-dimensional data char-                           𝑇 𝑇
+                                                                                          +
+                                                                                     4 𝜹𝒙 = 𝐊𝑇 𝜹𝒛𝑇 ;
+acterized by infinite values. This adaptation incorporates the patch em-                  𝑇
+bedding technique originally proposed for vision transformers. Notably,              5 𝒙
+                                                                                        𝑛
+                                                                                        𝐴−𝐾 𝐼 𝑇
+                                                                                                 = 𝒙𝑛𝐸 𝐾 𝐹 − 𝜹𝒙+ 𝑇
+                                                                                                                    ;
+                                                                                     6 𝐿𝑜𝑠𝑠 = 𝑀 𝑆 𝐸{𝒙
+                                                                                                          𝑛       , 𝒙𝑛𝐺𝑇 };
+in this context, a 1D-CNN is employed in lieu of a 2D-CNN.                                                𝐴−𝐾 𝐼 𝑇
+                                                                                       Output: 𝐿𝑜𝑠𝑠
+5. Proposed approach
+                                                                                 5.1.2. A-KIT algorithm
+    To cope with real-time adaptive process noise covariance matrix es-              Once the network is trained through the aforementioned stages,
+timation, we propose A-KIT, an adaptive Kalman-informed transformer.             it can be seamlessly integrated into the EKF methodology before the
+To this end, we derive a tailored set-transformer network for time               prediction step to obtain an accurate process noise covariance matrix.
+series data dedicated to real-time regression of the EKF’s process noise         The algorithm is detailed in Algorithm 2. Here, 𝒙𝑛 is the estimated
+covariance matrix. Additionally, a Kalman-informed loss is designed to           state, 𝜹𝒙𝑛𝑠 is a subset of the error state — which could be the position
+emulate the principles of the KF, enhancing the accuracy of the process          or velocity pending on the external measurement type — and 𝒛𝑏 is
+noise covariance. In this manner, A-KIT is designed as a hybrid algo-            the measurement update. A-KIT provides an estimate for the process
+rithm combining the strengths of the well-established theory behind              noise contrivance, enabling the propagation of both error-state and its
+EKF and leveraging well-known deep-learning characteristics.                     associated error-state covariance.
+    The A-KIT cycle begins with the initialization of the EKF, followed
+by the execution of the prediction phase in a loop until a valid ob-
+                                                                                 Algorithm 2: A-KIT over EKF
+servation is obtained. Throughout the prediction step, the estimated
+                                                                                                   𝑏
+covariance 𝐏𝑘 is stored in memory, along with all the transition ma-                   Input: 𝒇̂ 𝑖𝑏 , 𝝎̂ 𝑏𝑖𝑏 , 𝒛𝒃 , Innovation window size, 𝐐, 𝐑
+trices Φ𝑘 , up until the next update step. Upon encountering a valid                                    𝒏      𝒏
+                                                                                     1 Initialize: 𝜹𝒙𝒔 , 𝝐 , 𝜹𝒃𝒂 , 𝜹𝒃𝒈 , 𝐏
+observation, the update step is initiated, calculating the innovation-               2 for 𝑘 ← 1 to 𝑇 do
+based process noise covariance. Simultaneously, the A-KIT network                            𝑏        𝑏
+                                                                                     3     𝒇̂ ← 𝒇̂ − 𝜹𝒃𝒂 ;
+                                                                                              𝑖𝑏       𝑖𝑏
+receives the inertial measurement and estimated state 𝒙𝑛𝐸 𝐾 𝐹 from the               4       𝝎̂ 𝑏𝑖𝑏 ← 𝝎̂ 𝑏𝑖𝑏 − 𝜹𝒃𝒈 ;
+filter. It then computes the scaling factor necessary to multiply the                5       Calculate 𝐅 (6);
+innovation-based process noise covariance                                            6       Obtain 𝚽𝑘−1 (5);
+     ̂ 𝑘 ⋅ 𝐐𝐴−𝐾 𝐼 𝑇
+𝐐𝑘 = 𝐐                                                               (29)            7       Calculate 𝐆 (2);
+            𝑘
+                                                                                     8       Perform the prediction step (4);
+where 𝐐𝐴−𝐾
+       𝑘
+           𝐼 𝑇 is a diagonal scale factor matrix produced by A-KIT. The
+                                                                                     9       Solve INS ;
+Kalman-informed loss, described in Section 5.1.1, utilizes the pre-saved            10       if update is valid then
+estimated covariance matrix and transition matrices to perform the pre-              11             Get 𝜹𝒛 ;
+diction step once again with the output from the A-KIT. Subsequently,                12             Calculate 𝐇𝑘 (12);
+it calculates the Kalman gain to correct the error state. The entire A-KIT           13             Perform the update step (9)-(11);
+training flowchart is depicted in Fig. 1. As A-KIT is intended to regress            14             Correct the INS measurements ;
+the process noise, both prediction and update stages of the EKF are                  15             if Num. of updates ≥ Innovation window size then
+present in the cycle, allowing the propagation of the error-state and its            16                 𝐐 ̂ 𝑘 ← innovation covariance (13)-(14) ;
+associated error-state covariance.
+                                                                                     17                 𝐐𝐴−𝐾    𝐼 𝑇 ← A-KIT(𝒇   ̂ 𝑏 , 𝝎̂ 𝑏 ,𝒙̂ 𝑛 ,𝐐
+                                                                                                                                                  ̂ 𝑘 );
+                                                                                                            𝑘                     𝑖𝑏     𝑖𝑏 𝐸 𝐾 𝐹
+                                                                                     18                 𝐐𝑘 ← 𝐐    ̂ 𝑘 ⋅ 𝐐𝐴−𝐾 𝐼 𝑇 (29);
+5.1. A-KIT algorithm                                                                                                  𝑘
+
+                                                                                          Output: 𝒙𝒏
+5.1.1. Kalman-Informed loss
+    To align the A-KIT network with the model-based EKF, we propose
+a Kalman-informed loss. To that end, besides the network output, the             6. Case study: INS/DVL fusion
+loss incorporates several EKF parameters. The first is the estimated a
+posteriori state covariance matrix 𝐏+𝑘−1
+                                         , obtained immediately after a              Developing a reliable autonomous navigation system is essential
+Kalman update. The second set of parameters includes the transition              for navigating deep underwater environments, particularly in areas
+matrices Φ𝑘 between updates for model propagation, the measurement               beyond human reach. Commonly, underwater navigation relies on the
+matrix 𝐇𝑘 at the time of the update step, the a priori state estimate, the       fusion between INS and DVL in an EKF framework, with velocity
+measurement innovation 𝜹𝒛𝑘 , the covariance matrix of measurement                corrections from the DVL to ensure accurate navigation. The subse-
+noise 𝐑𝑘 , and the labels, which represent the ground-truth (GT) state.          quent exploration into navigation components unfold in the following
+    The loss mirrors the stages of the KF, with the process noise co-            sections: 6.1 reference frames, establishing foundational spatial con-
+variance serving as the output of the network, optimized through                 text; 6.2 dead-reckoning, a method vital for a continuous position,
+back-propagation. In essence, the loss function addresses the question:          velocity, and orientation deduction; 6.3 DVL velocity estimation, high-
+given that sensor fusion is a nonlinear problem, what is the optimal             lighting the role of Doppler velocity logs in enhancing accuracy; and
+
+                                                                             5
+N. Cohen and I. Klein                                                                                               Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+
+
+Fig. 1. A-KIT training process flowchart illustrating the dynamic estimation of process noise covariance while utilizing the Kalman-informed loss procedure. The parameters shown
+in the yellow block are stored during the prediction and update steps of the Kalman Filter and are subsequently used in the Kalman-informed loss procedure, along with the scale
+factor for process noise covariance estimated by A-KIT.
+
+
+6.4 conventional EKF and 3.2 adaptive EKF, illuminating advanced                            are radii of curvature in the meridian, and prime vertical (Shin and
+filtering strategies essential for refining navigation solutions in complex                 El-Sheimy, 2002). The velocity dynamics are expressed by
+underwater scenarios.
+                                                                                            𝒗̇ 𝑛 = 𝐂𝑛𝑏 𝒇 𝑏𝑖𝑏 − (2𝝎𝑛𝑖𝑒 + 𝝎𝑛𝑒𝑛 ) × 𝒗𝑛 + 𝒈𝑛                                          (31)
+6.1. Reference frames                                                                       where    𝒗𝑛 is the velocity vector expressed in the navigation frame,
+                                                                                            𝒇 𝑏𝑖𝑏 is the specific force vector expressed in the body frame, 𝒈𝑛 is
+    Three reference frames are addressed in this work:                                      the local gravity vector expressed in the navigation frame, and 𝜔𝑒 is
+                                                                                            the magnitude of the rotation rate of the Earth and has the value of
+    • Body frame: The body center is located at the center of mass of
+                                                                                            7.29×10−5 𝑆𝑟𝑎𝑑𝑒𝑐
+                                                                                                             . The vectors 𝝎𝑛𝑖𝑒 and 𝝎𝑛𝑒𝑛 are defined as
+      the vehicle. The 𝑥-axis is set along the vehicle’s longitudinal axis,
+      pointing forward, the 𝑧-axis downward, and the 𝑦-axis pointed                         𝝎𝑛𝑖𝑒 = [𝜔𝑒 cos 𝜑 0         − 𝜔𝑒 sin 𝜑]𝑇                                               (32)
+      outward, completing the right-hand orthogonal coordinate sys-
+      tem.                                                                                  𝝎𝑛𝑒𝑛 = [𝜆̇ cos 𝜑    − 𝜑̇     − 𝜆̇ sin 𝜑]𝑇 .                                           (33)
+    • Navigation frame: The navigation or geographic frame is defined
+      locally, relative to the Earth’s geoid. We employ the north-east-                     The rate of change of the rotation matrix from body to navigation frame
+      down (NED) coordinate system where the 𝑥-axis points to the true                      is
+      north, the 𝑦-axis points east, and the 𝑧-axis points toward the                       𝐂̇ 𝑛𝑏 = 𝐂𝑛𝑏 Ω𝑏𝑖𝑏 − (Ω𝑛𝑖𝑒 + Ω𝑛𝑒𝑛 )𝐂𝑛𝑏                .                                 (34)
+      interior of the ellipsoid along the ellipsoid normal, the direction
+      of gravity, completing a right-hand orthogonal coordinate system                      The body to navigation transformation matrix 𝐂𝑛𝑏 is defined as
+                                                                                                  ⎡𝑐 𝜃 𝑐 𝜓 −𝑐 𝜙𝑠𝜓 + 𝑠𝜙𝑠𝜃 𝑐 𝜓 𝑠𝜙𝑠𝜓 + 𝑐 𝜙𝑠𝜃 𝑐 𝜓 ⎤
+    • DVL frame: The DVL frame is a reference frame for the DVL                             𝐂𝑛𝑏 = ⎢𝑐 𝜃 𝑐 𝜓  𝑐 𝜙𝑠𝜓 + 𝑠𝜙𝑠𝜃 𝑐 𝜓 −𝑠𝜙𝑠𝜓 + 𝑐 𝜙𝑠𝜃 𝑐 𝜓 ⎥                                  (35)
+                                                                                                  ⎢                                            ⎥
+      sensor, whose sensitive axes are designed by the manufacturer.                              ⎣ −𝑠𝜃          𝑠𝜙𝑐 𝜃            𝑐 𝜙𝑐 𝜃       ⎦
+      The transformation from the DVL frame to the body frame is rep-                       where sin and cos are denoted as 𝑠 and 𝑐, respectively. 𝜙, 𝜃, and 𝜓
+      resented by a known fixed transformation matrix. Rogers (2003).                       are the three components of the Euler angles: roll, pitch, and yaw,
+                                                                                            respectively. The notation of 𝛺𝑎𝑏 is a skew-symmetric form of a vector
+6.2. Dead reckoning                                                                         defined as follows:
+                                                                                            𝛺𝑎𝑏 = (𝜔𝑏𝑎 ×) = ([𝜔1 𝜔2 𝜔3 ]×) =
+    Dead reckoning (DR) is the basic component of underwater navi-                                          ⎡ 0        −𝜔3     𝜔2 ⎤                                               (36)
+gation. Since GNSS signals do not penetrate water and cannot be used                                      = ⎢ 𝜔3        0      −𝜔1 ⎥
+to aid navigation, relying on initial conditions and integrating inertial                                   ⎢                      ⎥
+                                                                                                            ⎣−𝜔2       𝜔1       0 ⎦
+data over time is necessary. In a terrestrial navigation system, which
+operates in the local geographic reference frame, the time derivative of                    and operates on 𝝎𝑛𝑖𝑒 and 𝝎𝑛𝑒𝑛 , which are defined in (32)–(33). Addition-
+the coordinates can be written as                                                           ally, the operator is used on 𝝎𝑏𝑖𝑏 , which is the output of the gyroscope
+                                                                                            sensor used in (34) (Titterton et al., 2004).
+     ⎡𝜑̇ ⎤ ⎡ 𝑀+ℎ                 0⎤ ⎡𝑣𝑁 ⎤
+              1
+                         0
+     ⎢   ⎥ ⎢                       ⎥                                                              A navigation solution can be established by using Eqs. (30)–(35).
+  𝑛
+𝒓̇ = 𝜆̇ = ⎢ 0            1
+                                 0⎥ ⎢ 𝑣𝐸 ⎥ = 𝐃𝒗𝑛                    (30)                    Since sensor data is subject to errors such as stochastic noise and bias,
+     ⎢̇ ⎥ ⎢          (𝑁+ℎ) cos 𝜑     ⎢ ⎥
+     ⎣ℎ⎦ ⎣ 0             0       1⎥⎦ ⎣ 𝑣𝐷 ⎦                                                 the inertial measurements are expressed as follows:
+                                                                                               𝑏
+where 𝒓𝑛 represents the position in the geographic frame and 𝜑, 𝜆, and                      𝒇̂ 𝑖𝑏 = 𝒇 𝑏𝑖𝑏 + 𝒃𝑓 + 𝒏𝑓
+                                                                                                                                                                 (37)
+ℎ are the latitude, longitude, and height, respectively, and M and 𝑁                           𝑏
+                                                                                            𝝎̂ 𝑖𝑏 = 𝝎𝑏𝑖𝑏 + 𝒃𝜔 + 𝒏𝜔
+
+                                                                                        6
+N. Cohen and I. Klein                                                                                                  Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+such that the accelerometer and gyro noises are defined as zero-mean                      accelerometer bias residual error, and gyroscope bias residual error,
+white Gaussian noise:                                                                     respectively. The linearized error state differential equation is
+𝒏𝑎 ∼  (0, 𝜎𝑎2 ), 𝒏𝑔 ∼  (0, 𝜎𝑔2 )                                             (38)       𝜹𝒙̇ 𝒏 = 𝐅𝜹𝒙𝒏 + 𝐆𝒏                                                                          (47)
+
+and the biases are assumed to be modeled using random walk processes                      where 𝒏 ∈ R12×1 is the system noise vector, 𝐅 ∈ R12×12 is the system
+𝒃̇ 𝑎 = 𝒏𝑎𝑏 , 𝒏𝑎𝑏 ∼  (0, 𝜎𝑎2 )                                                            matrix, and 𝐆 ∈ R12×12 is the system noise distribution matrix. There
+                            𝑏
+                                                                (39)                      are several independent sources of noise in the system, each of which
+𝒃̇ 𝑔 = 𝒏𝑔𝑏 , 𝒏𝑔𝑏 ∼  (0, 𝜎𝑔2 )
+                                𝑏                                                         is assumed to have a zero mean Gaussian distribution as expressed in
+where 𝒃𝑎 and 𝒃𝑔 are the biases of the accelerometer and gyroscope,                        (38)–(39) and can be formulated into
+respectively. As the inertial readings (37) are integrated, the navigation                𝒏 = [𝒏𝑇𝒂    𝒏𝑇𝒈    𝒏𝑇𝒂        𝒏𝑇𝒈 ]𝑇 ∈ R12×1 .                                             (48)
+                                                                                                                   𝒃       𝒃
+solution accumulates error with time. Therefore, the INS is fused with
+additional sensors (Groves, 2015).                                                        The system matrix, 𝐅, is given by:
+                                                                                              ⎡ 𝐅𝑣𝑣  𝐅𝑣𝜖    𝟎3×3     𝐂𝑛𝑏 ⎤
+6.3. DVL velocity estimation                                                                  ⎢                𝑛         ⎥
+                                                                                                𝐅    𝐅       𝐂      𝟎
+                                                                                          𝐅 = ⎢ 𝜖𝑣    𝜖𝜖       𝑏     3×3 ⎥
+                                                                                                                                                                                     (49)
+                                                                                              ⎢𝟎3×3 𝟎3×3 𝟎3×3 𝟎3×3 ⎥
+    The DVL is an acoustic-based sensor that transmits four acoustic                          ⎢𝟎                         ⎥
+                                                                                              ⎣ 3×3 𝟎3×3 𝟎3×3 𝟎3×3 ⎦
+beams to the seabed in an × shape configuration, also known as the
+                                                                                          and the exact sub-matrices can be found, for example, in Groves (2015).
+‘‘Janus Doppler configuration’’. The sensor acts as both the transmitter
+                                                                                          In terms of the system noise distribution, matrix 𝐆 is
+and the receiver, and once the acoustic beams are reflected back, due
+to the Doppler effect, the velocity can be estimated (Brokloff, 1994;                          ⎡𝟎3×3    𝐂𝑛𝑏   𝟎3×3 𝟎3×3 ⎤
+                                                                                               ⎢ 𝑛                      ⎥
+                                                                                                 𝐂     𝟎      𝟎3×3 𝟎3×3 ⎥
+Rudolph and Wilson, 2012). In fact, the raw measurements are the                          𝐆=⎢ 𝑏         3×3
+                                                                                                                                                             (50)
+velocity in the beam directions and can be expressed in the following                          ⎢𝟎3×3 𝟎3×3 𝐈3×3 𝟎3×3 ⎥
+                                                                                               ⎢𝟎                       ⎥
+manner:                                                                                        ⎣ 3×3 𝟎3×3 𝟎3×3 𝐈3×3 ⎦
+                          ⎡𝑐 𝜓𝑏𝑒𝑎𝑚 𝑠𝛼 𝑠𝜓𝑏𝑒𝑎𝑚 𝑠𝛼 𝑐 𝛼 ⎤                                     where 𝟎3×3 is a three-by-three zero matrix and 𝐈3×3 is a three dimen-
+                          ⎢𝑐 𝜓    1
+                                    𝑠𝛼 𝑠𝜓𝑏𝑒𝑎𝑚2 𝑠𝛼 𝑐 𝛼 ⎥⎥
+                                             1
+                                                                                          sional identity matrix. The measurement innovation, 𝜹𝒛𝑘 , is the residual
+𝝊𝑏𝑒𝑎𝑚 = 𝐇𝑏𝑒𝑎𝑚 𝒗 , 𝐇𝑏𝑒𝑎𝑚 = ⎢ 𝑏𝑒𝑎𝑚2
+               𝑑
+                                                                   (40)
+                          ⎢𝑐 𝜓𝑏𝑒𝑎𝑚3 𝑠𝛼 𝑠𝜓𝑏𝑒𝑎𝑚3 𝑠𝛼 𝑐 𝛼 ⎥                                   between the velocity as calculated by the INS velocity (31) and the
+                          ⎢𝑐 𝜓                         ⎥                                  velocity given by the DVL in the body frame:
+                          ⎣ 𝑏𝑒𝑎𝑚4 𝑠𝛼 𝑠𝜓𝑏𝑒𝑎𝑚4 𝑠𝛼 𝑐 𝛼 ⎦
+where sin and cos are denoted as 𝑠 and 𝑐, respectively, 𝝊𝑏𝑒𝑎𝑚 ∈ R4×1                      𝜹𝒛 = 𝐂𝑏𝑛 𝒗𝑛𝐼 𝑁 𝑆 − 𝒗𝑏𝐷𝑉 𝐿 .                                                                (51)
+is the velocity in the beam directions, and 𝒗𝑑 ∈ R3×1 is the velocity                     By deriving the perturbation velocity error (51), the measurement
+in the DVL frame. Each beam transactor is rotated by a yaw angle                          matrix, 𝐇𝐷𝑉 𝐿 ∈ R3×12 , can be received:
+𝜓𝑏𝑒𝑎𝑚 and a pitch angle 𝛼, such that 𝛼 is constant and predefined by
+the manufacturer, and 𝜓𝑏𝑒𝑎𝑚 is expressed as follows:                                      𝐇𝐷𝑉 𝐿 = [𝐂𝑏𝑛       − 𝐂𝑏𝑛 (𝒗𝑛𝐼 𝑁 𝑆 ×) 𝟎3×3          𝟎3×3 ].                                 (52)
+
+𝜓𝑏𝑒𝑎𝑚𝚤̇ = (𝚤̇ − 1) ⋅ 90◦ + 45◦ , 𝚤̇ = 1, 2, 3, 4.                              (41)
+                                                                                              Once both the prediction and update steps are completed, correc-
+The measurements are not obtained ideally as illustrated in (40) and                      tions of the measurements occur in the following manner:
+are subject to built-in errors that are modeled by:
+                                                                                          𝒗𝒏𝐸 𝐾 𝐹 = 𝒗𝒏𝐼 𝑁 𝑆 − 𝜹𝒗𝒏                                                                  (53a)
+𝒚 = 𝐇𝑏𝑒𝑎𝑚 [𝒗𝑑 (𝟏 + 𝒔𝐷𝑉 𝐿 )] + 𝒃𝐷𝑉 𝐿 + 𝒏                                        (42)
+                                                                                          ̂ 𝑛 = [𝐈 − (𝝐 𝒏 ×)]𝐂𝑛
+                                                                                          𝐂                                                                                        (53b)
+                                                                                            𝑏                 𝑏
+where 𝒃𝐷𝑉 𝐿 ∈ R4×1 is the bias vector, 𝒔𝐷𝑉 𝐿 ∈ R3×1 is the scale factor
+vector, and 𝒏 ∈ R4×1 is a zero mean white Gaussian noise (Tal et al.,                     𝒃̂𝒂 = 𝒃𝒂 + 𝜹𝒃𝒂                                                                           (53c)
+2017; Cohen and Klein, 2022).                                                             𝒃̂𝒈 = 𝒃𝒈 + 𝜹𝒃𝒈 .                                                                         (53d)
+   Once the raw measurements are obtained, the next phase is to
+extract 𝒗𝑑 by filtering the data according to the following cost function:
+                                         2
+𝒗̂ 𝑑 = argmin∣∣ 𝒚 − 𝐇𝑏𝑒𝑎𝑚 𝒗𝑑 ∣∣ .                                              (43)       6.5. Implementation
+              𝒗𝑑
+
+The solution to (43) is (Bar-Shalom et al., 2001):                                            As mentioned earlier, the proposed architecture, A-KIT, is a set-
+𝒗̂   𝑑
+         = (𝐇𝑇𝑏𝑒𝑎𝑚 𝐇𝑏𝑒𝑎𝑚 )−1 𝐇𝑇𝑏𝑒𝑎𝑚 𝒚.                                         (44)       transformer tailored to process inertial and velocity time series data.
+                                                                                          The network takes a mini-batch comprising specific force, angular
+Finally, the DVL’s estimated velocity vector is transformed to the body                   velocity from the IMU, and estimated velocity from the first version of
+frame using (Markley, 1988):                                                              the adaptive EKF. For each, a one-second window was taken, meaning
+𝒗̂ 𝑏 = 𝐂𝑏𝑑 𝒗̂ 𝑑                                                                (45)       one hundred samples. This data then undergoes the modified patch-
+                                                                                          embedding layer designed for time series data. Subsequently, it enters
+                                                                       𝑏
+where 𝐂𝑏𝑑 is the DVL to body transformation matrix and 𝒗̂ is the DVL                      the set-transformer, as defined in Section 4. Additionally, the feed-
+velocity in the body frame.                                                               forward network at the end has a slight modification: following the
+                                                                                          activation function, there is a dropout layer with a probability of 0.1,
+6.4. INS/DVL fusion                                                                       and the network’s output passes through a ReLU activation function,
+                                                                                          ensuring that output values represent a positive definite matrix. How-
+    In the case of DVL velocity updates, the position is not directly                     ever, any zero values the activation function produces are replaced
+observable (Klein and Diamant, 2015); hence, a twelve-state vector                        with the value one. Lastly, the output of A-KIT is multiplied by the
+residual, 𝜹𝒙𝒏 , is employed:                                                              intermediate estimated innovation-based covariance matrix provided
+𝜹𝒙𝒏 = [𝜹𝒗𝒏𝑇           𝝐 𝒏𝑇   𝜹𝒃𝑇𝒂   𝜹𝒃𝑇𝒈 ]𝑇 ∈ R12×1                            (46)       by (13) to generate the new discrete process noise covariance (29). An
+                                                                                          illustrative block diagram depicting our A-KIT approach in the INS/DVL
+where 𝜹𝒗𝒏 ∈ R3×1 , 𝝐 ∈ R3×1 , 𝜹𝒃             𝒂 ∈R
+                                                 3×1 and 𝜹𝒃 ∈ R3×1 are the velocity
+                                                           𝒈                              case study is visualized in Fig. 2. The hyperparameters used in the
+error-states expressed in the navigation frame, the misalignment error,                   modified set-transformer A-KIT are presented in Table 1. The optimizer
+
+                                                                                      7
+N. Cohen and I. Klein                                                                                        Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+
+
+Fig. 2. A block diagram illustrating the set-transformer architecture for A-KIT INS/DVL fusion. The network takes a window of 100 samples from the inertial data along with
+velocity estimations from the EKF as input and produces the diagonal elements of the scale-factor matrix.
+
+
+Table 1                                                                                  evaluate the approach, we examined an additional two 400 [s] segments
+The network’s hyper-parameters and values.
+                                                                                         of the data that are not present in the training set, referring to them as
+ Hyper-parameter        𝛼      𝛽       𝛾      𝐷        ℎ       𝑓𝑓𝑒       𝑏     𝑘
+                                                                                         the test set. The trajectories in the NED frame for each segment in both
+ Value                  5      1       1      32       2       64        2     1
+                                                                                         the training and test sets are illustrated in Fig. 4.
+                                                                                             Additionally, to illustrate the difference in trajectory parameters, a
+                                                                                         radar chart is presented in Fig. 5. The normalized values of average
+                                                                                         speed, depth, roll, pitch, and yaw highlight the differences between tra-
+                                                                                         jectories, facilitating better generalization across common maneuvers
+                                                                                         performed by the AUV.
+
+
+                                                                                         7.2. Competitive approaches
+
+
+                                                                                            The three variations of the model-based adaptive EKF (AEKF) were
+                                                                                         computed using an innovation window size of five updates. The initial
+                                                                                         𝛿𝒙0 and 𝐏+  for the conventional EKF are
+                                                                                               [ 0                                ◦
+                                                                                                                                      ]
+                                                                                                    m
+                                                                                         𝛿𝒙0 = 0.1[ s ]𝟏3 2.5◦ 𝟏3 15[m𝑔]𝟏3 15[ h ]𝟏3                     (54)
+
+                                                                                             ⎡0.2[ ms ]𝐈3    𝟎3        𝟎3            𝟎3 ⎤
+                                                                                             ⎢ 𝟎            5◦ 𝐈3      𝟎3            𝟎3 ⎥⎥
+                                                                                         𝐏+ =⎢      3
+                                                                                                                                                                           (55)
+                                                                                          0  ⎢ 𝟎3            𝟎3     30[mg]𝐈3         𝟎3 ⎥
+                                                                                             ⎢ 𝟎             𝟎3        𝟎3          30[ h ]𝐈3 ⎥⎦
+                                                                                                                                       ◦
+                                                                                             ⎣      3
+
+                                                                                         while for the adaptive EKF variations, these parameters are:
+              Fig. 3. Snapir AUV being dispatched to a mission at sea.
+                                                                                               [                                    ◦
+                                                                                                                                        ]
+                                                                                         𝛿𝒙0 = 0.1[ ms ]𝟏3 0.5◦ 𝟏3 15[mg]𝟏3 0.5[ h ]𝟏3 .                                   (56)
+
+                                                                                             ⎡0.2[ ms ]𝐈3    𝟎3        𝟎3            𝟎3 ⎤
+employed is the RMSprop optimizer with a weight decay of 1 × 10−4 ,                          ⎢ 𝟎            1◦ 𝐈3      𝟎3            𝟎3 ⎥⎥
+a learning rate of 1 × 10−5 , and a mini-batch size of 400, trained over                 𝐏+ =⎢      3
+                                                                                                                                                                           (57)
+                                                                                          0  ⎢ 𝟎3            𝟎3     30[mg]𝐈3         𝟎3 ⎥
+100 epochs.                                                                                  ⎢ 𝟎                                   1[ h ]𝐈3 ⎥⎦
+                                                                                                                                      ◦
+                                                                                             ⎣      3        𝟎3        𝟎3
+7. Analysis and results                                                                  These values were determined through manual optimization to yield
+                                                                                         the best results with respect to the VRMSE metric. The first AEKF,
+7.1. Dataset acquisition                                                                 denoted as AEKF1, is defined in (13), AEKF2 in (16), and AEKF3 in
+                                                                                         (17). For the latter, a forgetting factor of 𝛾 = 0.15 was chosen.
+    We conducted experiments in the Mediterranean Sea near the shore
+of Haifa, Israel, using the Snapir AUV to gather data. Snapir is a
+modified ECA Group, A18D mid-size AUV for deep-water applications.                       7.3. Evaluation metrics
+It performs autonomous missions up to 3000 meters in depth with
+21 h of endurance (ECA Group, 2023). Snapir is equipped with iXblue
+                                                                                            To assess the performance of the proposed approach, we employed
+Phins Subsea, which is a FOG-based high-performance subsea iner-
+                                                                                         the root mean square error (RMSE) metric, examining both velocity
+tial navigation system (iXblue, 2023b) and Teledyne RDI Work Horse
+                                                                                         RMSE (VRMSE) and position RMSE (PRMSE), defined as follows:
+navigator DVL (Teledyne Marine, 2023) that achieve accurate velocity                                              √
+                                                                                                                    ∑𝑁
+measurements with a standard deviation of 0.02 [m∕s]. The INS operates                                                        ̂ 𝚤̇ )2
+                                                                                                                     ̇ (𝒑𝚤̇ − 𝒑
+                                                                                                                     𝚤=1
+at a rate of 100 [Hz] and the DVL at 1 [Hz]. Fig. 3 displays the Snapir                  𝑃 𝑅𝑀 𝑆 𝐸(𝒑𝚤̇ , 𝒑̂ 𝚤̇ ) =                                      (58)
+                                                                                                                         𝑁
+AUV during a mission.
+    The dataset was recorded on June 8th, 2022, and contains approx-                     where 𝑁 is the number of samples, 𝒑𝚤̇ denotes the ground truth position
+imately seven hours of data with different maneuvers, depths, and                        vector, and 𝒑̂ 𝚤̇ represents the predicted position vector.
+                                                                                                                  √
+speeds. The train set is composed of eleven different data sections, each                                           ∑𝑁
+                                                                                                                              ̂ 𝚤̇ )2
+                                                                                                                     ̇ (𝒗𝚤̇ − 𝒗
+                                                                                                                     𝚤=1
+of a duration of 400 [s] and with different dynamics for diversity. We                   𝑉 𝑅𝑀 𝑆 𝐸(𝒗𝚤̇ , 𝒗̂ 𝚤̇ ) =                                           (59)
+                                                                                                                         𝑁
+used only 73.3 min of the recorded data for training. As ground truth
+(GT), we used the filter solution given by Delph INS, post-processing                    where 𝒗𝚤̇ denotes the ground truth velocity vector, and 𝒗̂ 𝚤̇ represents the
+software for iXblue’s INS-based subsea navigation (iXblue, 2023a). To                    predicted velocity vector.
+
+                                                                                     8
+N. Cohen and I. Klein                                                                                            Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+
+
+Fig. 4. Thirteen AUV trajectories in the NED frame, measured in meters. Green circles denote starting points, and red triangles signify endpoints. Trajectories (a)–(k) belong to
+the training set, while (l)–(m) comprise the test set.
+
+
+7.4. Experimental results                                                                   cumulative mean VRMSE. In this case, the results are even superior to
+                                                                                            those of the previous ones. An improvement of more than 90% of the A-
+    The proposed A-KIT approach underwent evaluation using test set                         KIT over the EKF with respect to the VRMSE and 87.7% with respect to
+trajectories depicted in Fig. 4, comparing its performance against the                      the PRMSE is observed. Furthermore, there is an improvement of more
+conventional EKF and three AEKFs. A Monte Carlo (MC) test consisting                        than 31% for the A-KIT when compared to the VRMSE of the adaptive
+of 100 runs was made, with initial conditions drawn from a Gaus-                            approaches and more than 37% when compared to the PRMSE. All the
+sian distribution and  (𝛿𝒙0 , 𝐏0 ) as defined in (54)–(57). Figs. 6(b)                     results are organized in Table 2, where the exact values of the VRMSE
+and 7(b) display the position comparison for each method for test                           and PRMSE are provided.
+trajectories (l) and (m). In Fig. 6(a), the cumulative mean of the
+VRMSE for trajectory (l) is presented as a function of the MC itera-                        7.5. Real-time computation assessment
+tions. Convergence to a steady state is observed for all approaches,
+with the A-KIT outperforming both conventional and adaptive EKF                                 Extensive research has explored the real-time implementation of
+versions. The A-KIT demonstrates a 67.8% improvement in VRMSE and                           EKF and AEKF, with their computational demands largely dependent
+a 49.5% improvement in PRMSE compared to the EKF. Additionally, it                          on the number of states (Giroux et al., 2005). Studies show that EKF
+exhibits an improvement of more than 10% and 8% for the VRMSE                               generally requires less computational power than nonlinear filters like
+and PRMSE of the adaptive approaches, respectively. In the zoomed-                          the UKF and Particle Filter. The key distinction between the conven-
+in portion of 6(b), the suggested approach is shown to closely follow                       tional approach and our proposed method lies in the EKF and AEKF
+the trajectory compared to the others. When examining trajectory (m),                       update phase. In our framework, after the network is trained, only
+Fig. 7(a) demonstrates similar behavior as for the (l) trajectory. All the                  forward propagation is necessary during the update step. This raises the
+filters converge to a steady state, and the A-KIT possesses the lower                       question of whether the suggested method can fulfill the requirements
+
+                                                                                        9
+N. Cohen and I. Klein                                                                                                  Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+Table 2
+PRMSE and VRMSE performance of the conventional EKF (fixed process noise covariance), three AEKFs, and our proposed approach.
+ Method                       VRMSE [m/s]                        A-KIT VRMSE Improvement                             PRMSE [m]                         A-KIT PRMSE Improvement
+ Trajectory               (l)              (m)               (l)                (m)                             (l)              (m)               (l)               (m)
+ EKF                      0.977            0.694             67.8%              90.7%                           35.5             80.05             49.5%             87.7%
+ AEKF ver. 1              0.358            0.0934            12.29%             31.47%                          19.6             15.567            8.6%              37.11%
+ AEKF ver. 2              0.555            0.503             43.4%              87.2%                           26.1             66.4              31.4%             85.2%
+ AEKF ver. 3              0.350            0.0931            10.28%             31.2%                           20.7             15.54             13.5%             37%
+ A-KIT (Ours)             0.314            0.064             N/A                N/A                             17.9             9.79              N/A               N/A
+
+
+
+
+Fig. 5. Radar chart illustrating the average values of dynamic characteristics across
+13 trajectories. The metrics visualized include average speed (m/s), depth (m), roll
+(rad), pitch (rad), and yaw (rad). Each trajectory is represented as a distinct polygon,
+showcasing the diversity in dynamics and ensuring comprehensive representativeness
+of the training and testing datasets.
+
+
+
+
+of a real-time navigation system. Given that INS/DVL EKF systems are
+known to function in real-time, we benchmarked the execution time of
+a single prediction and update cycle for the competing approaches and
+our A-KIT model. This evaluation involved running the cycle 10,000
+times, with the average and standard deviation of the computation
+times recorded. The algorithms were written in Python 3.9.7, with the
+A-KIT deep learning model implemented using PyTorch 1.10.2. The
+computational environment consisted of an 11th Gen Intel® Core™ i7-
+1165G7 CPU running at 2.80 GHz, equipped with 8 cores and 16 GB
+of RAM.
+    The runtime results, as presented in Fig. 8, demonstrate that the                           Fig. 6. (a) The cumulative mean of the VRMSE as a function of the Monte Carlo
+proposed A-KIT method has a longer runtime of approximately 8,846                               iteration for the (l) trajectory. In (b), a trajectory comparison is presented between the
+μs per cycle compared to the baseline EKF and adaptive EKF varia-                               EKF variations for the (l) trajectory.
+tions (AEKF Ver.1, Ver.2, and Ver.3), which range between 813 and
+975 μs. Despite this increased runtime, the A-KIT method meets the
+real-time requirements for INS sampling at 100 Hz, as its runtime is                            8. Conclusions
+well within the 10 ms (10,000 μs) deadline, leaving sufficient buffer
+time for additional processes. Furthermore, the method satisfies the
+                                                                                                   This paper addresses the crucial task of applying an online adaptive
+computational demands of the aiding DVL, which commonly operates
+                                                                                                navigation filter. To that end, we proposed A-KIT, a hybrid learning
+at 1 Hz and requires completion within a 1-second window. The
+                                                                                                framework. Our approach leverages the advantages of DL, specifically
+additional computational overhead in A-KIT is justified by its enhanced
+                                                                                                a set-transformer network, to dynamically adapt the process noise
+accuracy and robustness in handling sensor errors and environmental
+uncertainties, making it highly suitable for real-time navigation, par-                         covariance matrix of an EKF. We rely on the well-established EKF
+ticularly in challenging scenarios. This trade-off between computation                          theory and enjoy the benefits of merging deep-learning algorithms with
+time and performance highlights A-KIT’s capability to deliver real-                             the filter.
+time navigation support while significantly improving reliability and                              The proposed Kalman-informed loss enables seamless integration
+adaptability. Regarding the additional space required compared to                               between the DL approach and the model-based EKF. Utilizing this loss,
+traditional methods, the increase is solely attributed to storing the pre-                      the network can be optimized to provide a covariance noise matrix
+trained weights. Upon calculation, we found that using A-KIT demands                            that minimizes errors in the desired state while adhering to all Kalman
+an additional 652.79 KB of storage.                                                             methodologies.
+
+                                                                                           10
+N. Cohen and I. Klein                                                                                                Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+                                                                                              trajectory and three different adaptive EKFs that dynamically adjust
+                                                                                              the process noise covariance based on the filter’s innovation. A-KIT
+                                                                                              was trained and evaluated using real recorded data from an AUV
+                                                                                              spanning 86.6 min. The results illustrate that A-KIT outperformed all
+                                                                                              other adaptive approaches, showcasing an average improvement of
+                                                                                              35.4% in PRMSE and 35.9% in VRMSE.
+                                                                                                  This study demonstrates that our A-KIT framework is capable of
+                                                                                              meeting the demands of real-time navigation tasks. However, compu-
+                                                                                              tational time analysis revealed that its implementation may require
+                                                                                              specialized hardware to address the increased processing demands.
+                                                                                              To build on these findings, future work could explore adapting the
+                                                                                              method to alternative Kalman filter frameworks, such as the UKF.
+                                                                                              Additionally, further efforts should focus on improving computational
+                                                                                              efficiency to reduce execution time while maintaining or enhancing
+                                                                                              overall performance.
+
+                                                                                              CRediT authorship contribution statement
+
+                                                                                                 Nadav Cohen: Writing – review & editing, Writing – original draft,
+                                                                                              Software, Formal analysis. Itzik Klein: Writing – review & editing,
+                                                                                              Supervision.
+
+                                                                                              Declaration of competing interest
+
+                                                                                                  The authors declare that they have no known competing finan-
+                                                                                              cial interests or personal relationships that could have appeared to
+                                                                                              influence the work reported in this paper.
+
+                                                                                              Acknowledgment
+
+                                                                                                 N.C. is supported by the Maurice Hatter Foundation and University
+                                                                                              of Haifa presidential scholarship for outstanding students on a direct
+                                                                                              Ph.D. track.
+Fig. 7. (a) The cumulative mean of the VRMSE as a function of the Monte Carlo
+iteration for the (m) trajectory. In (b), a trajectory comparison is presented between
+the EKF variations for the (m) trajectory.
+                                                                                              Data availability
+
+                                                                                                 A GitHub repository containing experiment data and code for im-
+                                                                                              plementing the A-KIT architecture is available.
+
+
+                                                                                              References
+
+                                                                                              Abosekeen, A., Noureldin, A., Korenberg, M.J., 2019. Improving the RISS/GNSS land-
+                                                                                                  vehicles integrated navigation system using magnetic azimuth updates. IEEE Trans.
+                                                                                                  Intell. Transp. Syst. 21 (3), 1250–1263.
+                                                                                              Akhlaghi, S., Zhou, N., Huang, Z., 2017. Adaptive adjustment of noise covariance in
+                                                                                                  Kalman filter for dynamic state estimation. In: 2017 IEEE Power & Energy Society
+                                                                                                  General Meeting. IEEE, pp. 1–5.
+                                                                                              Almagbile, A., Wang, J., Ding, W., 2010. Evaluating the performances of adaptive
+                                                                                                  Kalman filter methods in GPS/INS integration. J. Glob. Position. Syst. 9 (1), 33–40.
+                                                                                              Bar-Shalom, Y., Li, X.R., Kirubarajan, T., 2001. Estimation with Applications to Tracking
+                                                                                                  and Navigation: Theory Algorithms and Software. John Wiley & Sons.
+                                                                                              Brokloff, N.A., 1994. Matrix algorithm for Doppler sonar navigation. In: Proceedings
+                                                                                                  of OCEANS’94, vol. 3, IEEE, pp. III–378.
+                                                                                              Brossard, M., Barrau, A., Bonnabel, S., 2020. AI-IMU dead-reckoning. IEEE Trans. Intell.
+                                                                                                  Veh. 5 (4), 585–595.
+                                                                                              Chatfield, A.B., 1997. Fundamentals of High Accuracy Inertial Navigation, vol. 174,
+                                                                                                  AIAA.
+Fig. 8. The computation time for a single prediction and update cycle of the INS/DVL          Cohen, N., Klein, I., 2022. BeamsNet: A data-driven approach enhancing Doppler
+fusion process was measured across the compared approaches. Each cycle was executed               velocity log measurements for autonomous underwater vehicle navigation. Eng.
+10,000 times, and the results are reported as the mean computation time along with                Appl. Artif. Intell. 114, 105216.
+its associated standard deviation.                                                            Cohen, N., Klein, I., 2024. Inertial navigation meets deep learning: A survey of current
+                                                                                                  trends and future directions. Results Eng. 103565.
+                                                                                              Daum, F., 2005. Nonlinear filters: Beyond the Kalman filter. IEEE Aerosp. Electron.
+                                                                                                  Syst. Mag. 20 (8), 57–69.
+    A-KIT was developed as a versatile algorithm applicable to various
+                                                                                              Ding, W., Wang, J., Rizos, C., Kinlyside, D., 2007. Improving adaptive Kalman
+navigation-related fusion tasks. To demonstrate its effectiveness, we                             estimation in GPS/INS integration. J. Navig. 60 (3), 517–529.
+conducted a case study focused on the nonlinear fusion of INS/DVL in                          Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T.,
+                                                                                                  Dehghani, M., Minderer, M., Heigold, G., Gelly, S., et al., 2020. An image is worth
+an AUV. A-KIT was compared against four approaches, including the                                 16x16 words: Transformers for image recognition at scale. arXiv preprint arXiv:
+conventional EKF with a constant process noise covariance along the                               2010.11929.
+
+
+                                                                                         11
+N. Cohen and I. Klein                                                                                                      Engineering Applications of Arti cial Intelligence 146 (2025) 110221
+
+
+ECA Group, 2023. A18-D AUV: Autonomous underwater vehicle. https://www.                             Or, B., Klein, I., 2023b. ProNet: Adaptive process noise estimation for INS/DVL fusion.
+    ecagroup.com/en/solutions/a18-d-auv-autonomous-underwater-vehicle. (Accessed                         In: 2023 IEEE Underwater Technology. UT, pp. 1–5. http://dx.doi.org/10.1109/
+    September 2023).                                                                                     UT49729.2023.10103449.
+Farrell, J., 2008. Aided Navigation: GPS with High Rate Sensors. McGraw-Hill, Inc..                 Ribeiro, M.I., 2004. Kalman and extended Kalman filters: Concept, derivation and
+Gao, W., Li, J., Zhou, G., Li, Q., 2015. Adaptive Kalman filtering with recursive noise                  properties. Inst. Syst. Robot. 43 (46), 3736–3741.
+    estimator for integrated SINS/DVL systems. J. Navig. 68 (1), 142–161.                           Rogers, R.M., 2003. Applied Mathematics in Integrated Navigation Systems, vol. 1,
+Gao, X., Luo, H., Ning, B., Zhao, F., Bao, L., Gong, Y., Xiao, Y., Jiang, J., 2020. RL-AKF:              AIAA.
+    An adaptive Kalman filter navigation algorithm based on reinforcement learning                  Rudolph, D., Wilson, T.A., 2012. Doppler velocity log theory and preliminary consid-
+    for ground vehicles. Remote. Sens. 12 (11), 1704.                                                    erations for design and construction. In: 2012 Proceedings of IEEE Southeastcon.
+Gelb, A., et al., 1974. Applied Optimal Estimation. MIT Press.                                           IEEE, pp. 1–7.
+Giroux, R., Gourdeau, R., Landry, R., 2005. Extended Kalman filter implementation for               Saab, S.S., 1995. Discrete-time Kalman filter under incorrect noise covariances. In:
+    low-cost INS/GPS integration in a fast prototyping environment. In: Symposium on                     Proceedings of 1995 American Control Conference-ACC’95, vol. 2, IEEE, pp.
+    Navigation of the Canadian Navigation Society. pp. 1–11.                                             1152–1156.
+Goodfellow, I., Bengio, Y., Courville, A., 2016. Deep Learning. MIT Press.                          Sangsuk-Iam, S., Bullock, T.E., 1990. Analysis of discrete-time Kalman filtering under
+Groves, P.D., 2015. Principles of GNSS, inertial, and multisensor integrated navigation                  incorrect noise covariances. IEEE Trans. Autom. Control 35 (12), 1304–1309.
+    systems. IEEE Aerosp. Electron. Syst. Mag. 30 (2), 26–27.                                       Shen, H., Wen, G., Lv, Y., Zhou, J., Wang, L., 2022. USV parameter estimation: Adaptive
+Haarnoja, T., Ajay, A., Levine, S., Abbeel, P., 2016. Backprop KF: Learning                              unscented Kalman filter-based approach. IEEE Trans. Ind. Inform..
+    discriminative deterministic state estimators. Adv. Neural Inf. Process. Syst. 29.              Shin, E.-H., El-Sheimy, N., 2002. Accuracy improvement of low cost INS/GPS for land
+Heffes, H., 1966. The effect of erroneous models on the Kalman filter response. IEEE                     applications. In: Proceedings of the 2002 National Technical Meeting of the Institute
+    Trans. Autom. Control 11 (3), 541–543.                                                               of Navigation. pp. 146–157.
+Hide, C., Moore, T., Smith, M., 2003. Adaptive Kalman filtering for low-cost INS/GPS.               Silva, D.C., Frutuoso, A., Souza, L.F., de Barros, E.A., 2022. Comparative analysis
+    J. Navig. 56 (1), 143–152.                                                                           of innovation-based adaptive Kalman filters applied to AUVs navigation. In:
+Huang, R., Lei, M., Zhang, X., Zhou, L., Lu, Y., He, B., 2023. LSTM-based process                        2022 Latin American Robotics Symposium (LARS), 2022 Brazilian Symposium on
+    noise covariance prediction for AUV navigation. In: 2023 IEEE 7th Information                        Robotics (SBR), and 2022 Workshop on Robotics in Education. WRE, IEEE, pp.
+    Technology and Mechatronics Engineering Conference. ITOEC, vol. 7, IEEE, pp.                         31–36.
+    1657–1661.                                                                                      Simon, D., 2006. Optimal State Estimation: Kalman, H Infinity, and Nonlinear
+iXblue, 2023a. DELPH INS. https://www.ixblue.com/store/delph-ins/. (Accessed                             Approaches. John Wiley & Sons.
+    September 2023).                                                                                Solodar, D., Klein, I., 2024. VIO-DualProNet: Visual-inertial odometry with learning
+iXblue, 2023b. PHINS subsea. https://www.ixblue.com/store/phins-subsea/. (Accessed                       based process noise covariance. Eng. Appl. Artif. Intell. 133, 108466.
+    September 2023).                                                                                Tal, A., Klein, I., Katz, R., 2017. Inertial navigation system/Doppler velocity log
+Jouaber, S., Bonnabel, S., Velasco-Forero, S., Pilte, M., 2021. Nnakf: A neural network                  (INS/DVL) fusion with partial DVL measurements. Sensors 17 (2), 415.
+    adapted Kalman filter for target tracking. In: ICASSP 2021-2021 IEEE Interna-                   Teledyne Marine, 2023. Doppler velocity logs. https://www.teledynemarine.com/
+    tional Conference on Acoustics, Speech and Signal Processing. ICASSP, IEEE, pp.                      products/product-line/navigation-positioning/doppler-velocity-logs.       (Accessed
+    4075–4079.                                                                                           September 2023).
+Klein, I., Diamant, R., 2015. Observability analysis of DVL/PS aided INS for a                      Titterton, D., Weston, J.L., Weston, J., 2004. Strapdown Inertial Navigation Technology,
+    maneuvering AUV. Sensors 15 (10), 26818–26837.                                                       vol. 17, IET.
+Lee, J., Lee, Y., Kim, J., Kosiorek, A., Choi, S., Teh, Y.W., 2019. Set trans-                      Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, Ł.,
+    former: A framework for attention-based permutation-invariant neural networks.                       Polosukhin, I., 2017. Attention is all you need. Adv. Neural Inf. Process. Syst. 30.
+    In: International Conference on Machine Learning. PMLR, pp. 3744–3753.                          Wan, E.A., Van Der Merwe, R., 2000. The unscented Kalman filter for nonlinear esti-
+Li, Y., Chen, R., Niu, X., Zhuang, Y., Gao, Z., Hu, X., El-Sheimy, N., 2021. Inertial                    mation. In: Proceedings of the IEEE 2000 Adaptive Systems for Signal Processing,
+    sensing meets machine learning: Opportunity or challenge? IEEE Trans. Intell.                        Communications, and Control Symposium (Cat. No. 00EX373). IEEE, pp. 153–158.
+    Transp. Syst..                                                                                  Wang, Q., Liu, K., Cao, Z., 2023. System noise variance matrix adaptive Kalman filter
+Liu, Y., Fan, X., Lv, C., Wu, J., Li, L., Ding, D., 2018. An innovative information                      method for AUV INS/DVL navigation system. Ocean Eng. 267, 113269.
+    fusion method with adaptive Kalman filter for integrated INS/GPS navigation of                  Wang, D., Xu, X., Hou, L., 2020. An improved adaptive Kalman filter for underwater
+    autonomous vehicles. Mech. Syst. Signal Process. 100, 605–616.                                       SINS/DVL system. Math. Probl. Eng. 2020, 1–14.
+Markley, F.L., 1988. Attitude determination using vector observations and the singular              Wu, F., Luo, H., Jia, H., Zhao, F., Xiao, Y., Gao, X., 2020. Predicting the noise
+    value decomposition. J. Astronaut. Sci. 36 (3), 245–258.                                             covariance with a multitask learning model for Kalman filter-based GNSS/INS
+Mehra, R., 1970. On the identification of variances and adaptive Kalman filtering. IEEE                  integrated navigation. IEEE Trans. Instrum. Meas. 70, 1–13.
+    Trans. Autom. Control 15 (2), 175–184.                                                          Xiao, Y., Luo, H., Zhao, F., Wu, F., Gao, X., Wang, Q., Cui, L., 2021. Residual attention
+Mehra, R., 1972. Approaches to adaptive filtering. IEEE Trans. Autom. Control 17 (5),                    network-based confidence estimation algorithm for non-holonomic constraint in
+    693–698.                                                                                             GNSS/INS integrated navigation system. IEEE Trans. Veh. Technol. 70 (11),
+Mohamed, A., Schwarz, K., 1999. Adaptive Kalman filtering for INS/gps. J. Geod. 73,                      11404–11418.
+    193–203.                                                                                        Zhang, L., Sidoti, D., Bienkowski, A., Pattipati, K.R., Bar-Shalom, Y., Kleinman, D.L.,
+Or, B., Klein, I., 2022a. A hybrid model and learning-based adaptive navigation filter.                  2020. On the identification of noise covariances and adaptive Kalman filtering: A
+    IEEE Trans. Instrum. Meas. 71, 1–11.                                                                 new look at a 50 year-old problem. IEEE Access 8, 59362–59388.
+Or, B., Klein, I., 2022b. Adaptive step size learning with applications to velocity aided           Zou, Z., Huang, T., Ye, L., Song, K., 2020. CNN based adaptive Kalman filter in high-
+    inertial navigation system. IEEE Access 10, 85818–85830.                                             dynamic condition for low-cost navigation system on highspeed UAV. In: 2020 5th
+Or, B., Klein, I., 2023a. Learning vehicle trajectory uncertainty. Eng. Appl. Artif. Intell.             Asia-Pacific Conference on Intelligent Robot Systems. ACIRS, IEEE, pp. 103–108.
+    122, 106101.
+
+
+
+
+                                                                                               12
+

@@ -1,0 +1,2 @@
+﻿# Command: python tests\akit_pdf_smoke\reproduction\run_reproduction.py --stage baseline --outputs tests\akit_pdf_smoke\outputs
+Wrote tests\akit_pdf_smoke\outputs\tables\baseline_metrics.csv

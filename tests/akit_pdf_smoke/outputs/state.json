@@ -1,0 +1,20 @@
+{
+  "paper_input": "tests\\2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf",
+  "current_stage": "validation",
+  "completed_stages": [
+    "literature",
+    "reading",
+    "baseline",
+    "figures",
+    "validation"
+  ],
+  "artifacts": {
+    "literature": "D:\\BaiduSyncdisk\\Master\\LLM\\论文复现Agent\\tests\\akit_pdf_smoke\\outputs\\literature_sources.md",
+    "reading": "D:\\BaiduSyncdisk\\Master\\LLM\\论文复现Agent\\tests\\akit_pdf_smoke\\outputs\\reproduction_spec.md",
+    "baseline": "D:\\BaiduSyncdisk\\Master\\LLM\\论文复现Agent\\tests\\akit_pdf_smoke\\outputs\\baseline_review.md",
+    "figures": "D:\\BaiduSyncdisk\\Master\\LLM\\论文复现Agent\\tests\\akit_pdf_smoke\\outputs\\figures_tables_review.md",
+    "validation": "D:\\BaiduSyncdisk\\Master\\LLM\\论文复现Agent\\tests\\akit_pdf_smoke\\outputs\\report.md"
+  },
+  "risks": [],
+  "last_review": "tests/akit_pdf_smoke/outputs/validation_review.md"
+}

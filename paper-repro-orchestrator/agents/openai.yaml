@@ -1,0 +1,4 @@
+interface:
+  display_name: "论文复现总控"
+  short_description: "一个入口完成分阶段论文复现"
+  default_prompt: "使用 $paper-repro-orchestrator 复现这篇论文，先生成计划并逐阶段等待我审核。"

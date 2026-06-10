@@ -1,0 +1,30 @@
+﻿# Command: python -m paper_repro_agent.cli run --stage reading --run-dir tests\akit_pdf_smoke
+# �׶����������ľ����븴�ֹ��
+
+���׶���ɣ�
+- �Ѱ� `reading_spec.md` ִ�� ���ľ����븴�ֹ�� �׶Ρ�
+- �����ɽ׶β��ﲢ���¹�����״̬��
+
+�����ļ���
+- tests/akit_pdf_smoke/outputs/reproduction_spec.md
+- tests/akit_pdf_smoke/outputs/paper_text.txt
+- tests/akit_pdf_smoke/outputs/memory.md
+- tests/akit_pdf_smoke/outputs/stage_notes.md
+
+�ؼ������
+- �׶β���������� Markdown��
+- ���������ڽ׶ν�����ֹͣ���ȴ��˹���˺��ٽ�����һ�׶Ρ�
+
+����/���գ�
+- ����δ���� LLM������Ϊ�����н��ּܣ�������ʵ��Ҫ�˹������ LLM �׶β�ȫ��
+- PDF �ı���ȡ������©��ʽ�����ͼע�����˳��
+
+������£�
+- ���³��ڼ��䣺׷�ӵ�ǰ�׶�ժҪ��
+- ���ڼ��䣺tests/akit_pdf_smoke/outputs/memory.md
+- �׶αʼǣ�tests/akit_pdf_smoke/outputs/stage_notes.md
+
+��һ�׶Σ�
+- ���߷���ʵ��
+
+�����ʾ�������߻���ÿ���׶ν�����ֹͣ��ȷ�����������ʽ������һ�׶����

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paper-repro-agent"
+version = "0.1.0"
+description = "Lightweight LangChain CLI agent for staged paper reproduction workflows."
+readme = "agent工作流.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=1.0.0",
+    "langchain-openai>=1.0.1",
+]
+
+[project.optional-dependencies]
+pdf = ["pypdf>=4.0.0"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+paper-repro = "paper_repro_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

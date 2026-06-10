@@ -1,0 +1,29 @@
+﻿# Command: python -m paper_repro_agent.cli run --paper tests\2025 - Nadav Cohen - Adaptive Kalman-Informed Transformer.pdf --stage literature --run-dir tests\akit_pdf_smoke
+# �׶����������������Դ����
+
+���׶���ɣ�
+- �Ѱ� `literature_search.md` ִ�� ���������Դ���� �׶Ρ�
+- �����ɽ׶β��ﲢ���¹�����״̬��
+
+�����ļ���
+- tests/akit_pdf_smoke/outputs/literature_sources.md
+- tests/akit_pdf_smoke/outputs/memory.md
+- tests/akit_pdf_smoke/outputs/stage_notes.md
+
+�ؼ������
+- �׶β���������� Markdown��
+- ���������ڽ׶ν�����ֹͣ���ȴ��˹���˺��ٽ�����һ�׶Ρ�
+
+����/���գ�
+- ����δ���� LLM������Ϊ�����н��ּܣ�������ʵ��Ҫ�˹������ LLM �׶β�ȫ��
+- ��������������������硢API ���������ı�������Ӱ�졣
+
+������£�
+- �������ڼ��䣺��¼�������롢�û�ƫ�ú͵�ǰִ��Լ����
+- ���ڼ��䣺tests/akit_pdf_smoke/outputs/memory.md
+- �׶αʼǣ�tests/akit_pdf_smoke/outputs/stage_notes.md
+
+��һ�׶Σ�
+- ���ľ����븴�ֹ��
+
+�����ʾ�������߻���ÿ���׶ν�����ֹͣ��ȷ�����������ʽ������һ�׶����
