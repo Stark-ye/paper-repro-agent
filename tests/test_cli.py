@@ -25,6 +25,12 @@ def test_cli_parses_review() -> None:
     assert args.run_dir == "runs/demo"
 
 
+def test_cli_parses_doctor() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["doctor"])
+    assert args.command == "doctor"
+
+
 def test_cli_has_no_akit_command() -> None:
     parser = build_parser()
     choices = parser._subparsers._group_actions[0].choices

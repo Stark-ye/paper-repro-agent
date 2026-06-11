@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .state import STAGE_LABELS, next_stage
+from .state import STAGE_LABELS, WorkflowState, next_incomplete_stage
 
 
 @dataclass
@@ -13,10 +13,11 @@ class StageReview:
     key_results: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     memory_updates: list[str] = field(default_factory=list)
+    workflow_state: WorkflowState | None = None
 
 
 def render_review(review: StageReview) -> str:
-    upcoming = next_stage(review.stage)
+    upcoming = next_incomplete_stage(review.workflow_state) if review.workflow_state else None
     upcoming_text = STAGE_LABELS[upcoming] if upcoming else "全部阶段已完成，可运行 `paper-repro review` 生成总审阅报告。"
     lines = [
         f"# 阶段审查包：{STAGE_LABELS.get(review.stage, review.stage)}",

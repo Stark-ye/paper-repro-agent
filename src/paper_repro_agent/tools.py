@@ -32,7 +32,7 @@ def load_reference_tool(filename: str) -> str:
 
 
 def read_workspace_file(path: str) -> str:
-    """Read a UTF-8 file from the repository workspace."""
+    """Read a UTF-8 file from the current run directory."""
     context = run_context_from_env()
     raw = Path(path)
     candidate = raw.resolve() if raw.is_absolute() else (context.root_dir / raw).resolve()
@@ -43,7 +43,7 @@ def read_workspace_file(path: str) -> str:
 
 
 def write_workspace_file(path: str, content: str) -> str:
-    """Write a UTF-8 file under outputs/ or reproduction/."""
+    """Write a UTF-8 file under outputs/ or reproduction/ in the current run directory."""
     candidate = _safe_workspace_path(path)
     candidate.parent.mkdir(parents=True, exist_ok=True)
     candidate.write_text(content, encoding="utf-8")
@@ -119,8 +119,15 @@ def search_arxiv(query: str, max_results: int = 5) -> str:
         }
     )
     url = f"https://export.arxiv.org/api/query?{encoded}"
-    with urllib.request.urlopen(url, timeout=20) as response:
-        raw = response.read()
+    try:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            raw = response.read()
+    except Exception as exc:
+        return json.dumps(
+            [{"source": "arXiv", "query": query, "status": "error", "error": str(exc)}],
+            ensure_ascii=False,
+            indent=2,
+        )
     root = ET.fromstring(raw)
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     results: list[dict[str, str]] = []
@@ -147,8 +154,15 @@ def search_semantic_scholar(query: str, limit: int = 5) -> str:
     )
     url = f"https://api.semanticscholar.org/graph/v1/paper/search?{params}"
     request = urllib.request.Request(url, headers={"User-Agent": "paper-repro-agent/0.1"})
-    with urllib.request.urlopen(request, timeout=20) as response:
-        raw = response.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = response.read().decode("utf-8")
+    except Exception as exc:
+        return json.dumps(
+            {"source": "Semantic Scholar", "query": query, "status": "error", "error": str(exc)},
+            ensure_ascii=False,
+            indent=2,
+        )
     return raw
 
 

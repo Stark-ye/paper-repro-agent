@@ -26,6 +26,15 @@ STAGE_LABELS: dict[str, str] = {
     "validation": "验证与中文报告",
 }
 
+STAGE_PREREQUISITES: dict[str, str | None] = {
+    "literature": None,
+    "reading": "literature",
+    "baseline": "reading",
+    "core": "baseline",
+    "figures": "core",
+    "validation": "figures",
+}
+
 
 @dataclass
 class WorkflowState:
@@ -35,19 +44,33 @@ class WorkflowState:
     artifacts: dict[str, str] = field(default_factory=dict)
     risks: list[str] = field(default_factory=list)
     last_review: str | None = None
+    run_modes: dict[str, str] = field(default_factory=dict)
 
-    def mark_completed(self, stage: str, artifact: Path | None = None) -> None:
+    def mark_completed(self, stage: str, artifact: Path | None = None, mode: str | None = None) -> None:
         if stage not in self.completed_stages:
             self.completed_stages.append(stage)
         self.current_stage = stage
         if artifact is not None:
             self.artifacts[stage] = str(artifact)
+        if mode is not None:
+            self.run_modes[stage] = mode
 
 
 def validate_stage(stage: str) -> None:
     if stage not in STAGES:
         allowed = ", ".join(STAGES)
         raise ValueError(f"Unknown stage '{stage}'. Allowed stages: {allowed}")
+
+
+def validate_stage_prerequisites(stage: str, state: WorkflowState) -> None:
+    validate_stage(stage)
+    prerequisite = STAGE_PREREQUISITES[stage]
+    if prerequisite and prerequisite not in state.completed_stages:
+        label = STAGE_LABELS[prerequisite]
+        raise RuntimeError(
+            f"Stage '{stage}' requires completed prerequisite stage '{prerequisite}' ({label}). "
+            "Run the workflow stages in order."
+        )
 
 
 def load_state(path: Path | None = None) -> WorkflowState:
@@ -62,6 +85,7 @@ def load_state(path: Path | None = None) -> WorkflowState:
         artifacts=dict(data.get("artifacts", {})),
         risks=list(data.get("risks", [])),
         last_review=data.get("last_review"),
+        run_modes=dict(data.get("run_modes", {})),
     )
 
 
@@ -81,3 +105,10 @@ def next_stage(stage: str) -> str | None:
     if index + 1 >= len(STAGES):
         return None
     return STAGES[index + 1]
+
+
+def next_incomplete_stage(state: WorkflowState) -> str | None:
+    for stage in STAGES:
+        if stage not in state.completed_stages:
+            return stage
+    return None

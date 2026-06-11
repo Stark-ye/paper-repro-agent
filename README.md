@@ -32,6 +32,40 @@ pip install -e .[dev,pdf,review]
 pip install "paper-repro-agent[pdf] @ git+https://github.com/<user>/<repo>.git"
 ```
 
+## 环境诊断与修复
+
+默认流程会调用 LangChain 和 OpenAI-compatible 模型。首次运行前建议先执行：
+
+```bash
+paper-repro doctor
+```
+
+如果还没有把项目安装到当前 Python 环境，请在项目根目录运行：
+
+```bash
+pip install -e .[pdf,dev,review]
+```
+
+推荐使用干净虚拟环境，避免 base 环境中已有的深度学习依赖影响 LangChain 导入：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+pip install -e .[pdf,dev,review]
+paper-repro doctor
+```
+
+如果继续使用 Anaconda base 环境，并且 `paper-repro doctor` 报出 `torch\lib\c10.dll` 或 DLL 初始化失败，可尝试重装 CPU 版 torch：
+
+```powershell
+pip uninstall -y torch torchvision torchaudio
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+paper-repro doctor
+```
+
+如果暂时不配置 API key，默认 LangChain 模式会报错；可以用 `--scaffold` 运行离线脚手架。
+
 ## Quick Start
 
 推荐为每篇论文创建一个独立运行目录。把论文 PDF 放进去后，后续产物都会写在这个目录下。

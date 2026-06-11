@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from paper_repro_agent.agent import build_system_prompt, load_model_config
+from paper_repro_agent.agent import build_system_prompt, load_model_config, parse_agent_result
 
 
 def test_load_model_config_requires_api_key(monkeypatch, tmp_path: Path) -> None:
@@ -60,3 +60,38 @@ def test_build_system_prompt_contains_stage_contract() -> None:
     assert "论文复现" in prompt
     assert "文献与代码源调查" in prompt
     assert "阶段审查规范" in prompt
+    assert "artifact_markdown" in prompt
+    assert "files_written 只能包含 outputs/ 或 reproduction/ 下的相对路径" in prompt
+
+
+def test_parse_agent_result_accepts_required_protocol() -> None:
+    result = parse_agent_result(
+        """
+        {
+          "artifact_markdown": "# 文献调查\\n\\n- 已完成。",
+          "files_written": ["outputs/extra.md"],
+          "risks": ["需要人工核对来源"],
+          "next_actions": ["进入 reading"]
+        }
+        """
+    )
+
+    assert result.artifact_markdown.startswith("# 文献调查")
+    assert result.files_written == ["outputs/extra.md"]
+    assert result.risks == ["需要人工核对来源"]
+    assert result.next_actions == ["进入 reading"]
+
+
+def test_parse_agent_result_rejects_non_json() -> None:
+    with pytest.raises(ValueError, match="not valid JSON"):
+        parse_agent_result("# 普通 Markdown")
+
+
+def test_parse_agent_result_rejects_missing_artifact() -> None:
+    with pytest.raises(ValueError, match="artifact_markdown"):
+        parse_agent_result('{"files_written": [], "risks": [], "next_actions": []}')
+
+
+def test_parse_agent_result_rejects_bad_list_fields() -> None:
+    with pytest.raises(ValueError, match="files_written"):
+        parse_agent_result('{"artifact_markdown": "# ok", "files_written": "outputs/a.md"}')

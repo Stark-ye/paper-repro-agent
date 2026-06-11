@@ -12,6 +12,14 @@ from .stages import run_stage
 from .state import STAGES, load_state
 
 
+def _configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="paper-repro", description="Run staged paper reproduction workflows.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -42,10 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     review = subparsers.add_parser("review", help="Generate a concise reproduction review report.")
     review.add_argument("--run-dir", default=None, help="Run directory to review. Defaults to repo root.")
 
+    subparsers.add_parser("doctor", help="Diagnose local install, model env, and LangChain imports.")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
+    _configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -87,7 +98,21 @@ def main(argv: list[str] | None = None) -> None:
         print(result)
         return
 
+    if args.command == "doctor":
+        from .doctor import run_doctor
+
+        _safe_print(run_doctor())
+        return
+
     parser.print_help()
+
+
+def _safe_print(text: str) -> None:
+    encoding = sys.stdout.encoding or "utf-8"
+    safe_text = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+    sys.stdout.write(safe_text)
+    if not safe_text.endswith("\n"):
+        sys.stdout.write("\n")
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ STAGE_REFERENCES: dict[str, str] = {
 FALLBACK_REFERENCES: dict[str, str] = {
     "system_prompt.md": (
         "# 论文复现总控\n\n"
-        "你是一个中文论文复现 Agent。按阶段生成可审阅产物，不伪造实验结果；"
-        "缺少数据、代码或依赖时必须明确标注风险和后续步骤。"
+        "你是一个中文论文复现 Agent。你需要按阶段生成可审阅产物，不伪造实验结果。"
+        "缺少数据、代码或依赖时，必须明确标注风险、缺口和后续步骤。"
     ),
     "stage_contract.md": (
         "# 阶段审查规范\n\n"
@@ -37,7 +37,7 @@ FALLBACK_REFERENCES: dict[str, str] = {
     ),
     "code_implementation.md": (
         "# 代码实现\n\n"
-        "生成方法独立程序、整体比较主程序、数据加载、指标计算和配置文件；"
+        "生成方法独立程序、整体比较主程序、数据加载、指标计算和配置文件。"
         "脚手架不得冒充真实复现结果。"
     ),
     "figures_tables.md": (

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from .paths import RunContext
+from .state import STAGES, load_state
 
 
 class ReviewState(TypedDict):
@@ -15,7 +16,7 @@ class ReviewState(TypedDict):
 
 def run_review(context: RunContext) -> str:
     context.outputs_dir.mkdir(parents=True, exist_ok=True)
-    initial: ReviewState = {"context": context, "findings": [], "conclusion": "有条件通过"}
+    initial: ReviewState = {"context": context, "findings": [], "conclusion": "不通过"}
     try:
         state = _run_langgraph(initial)
     except Exception:
@@ -63,7 +64,14 @@ def _code_reviewer(state: ReviewState) -> ReviewState:
         findings.append("BLOCKER: 缺少 `reproduction/methods/*.py` 方法文件。")
     for required in ["data.py", "metrics.py", "config.json"]:
         if not (context.reproduction_dir / required).exists():
-            findings.append(f"WARN: 缺少必要辅助文件 `reproduction/{required}`。")
+            findings.append(f"BLOCKER: 缺少必要辅助文件 `reproduction/{required}`。")
+    empty_code = [
+        path
+        for path in [main, context.reproduction_dir / "data.py", context.reproduction_dir / "metrics.py", *methods]
+        if path.exists() and path.is_file() and path.stat().st_size == 0 and path.name != "__init__.py"
+    ]
+    if empty_code:
+        findings.append("BLOCKER: 存在空代码文件：" + ", ".join(_display_path(path) for path in empty_code))
     state["findings"] = findings
     return state
 
@@ -75,15 +83,22 @@ def _artifact_reviewer(state: ReviewState) -> ReviewState:
     tables = sorted((context.outputs_dir / "tables").glob("*")) if (context.outputs_dir / "tables").exists() else []
     figure_files = [path for path in figures if path.is_file()]
     table_files = [path for path in tables if path.is_file()]
-    findings.append(f"图表数量：图片 {len(figure_files)} 个，表格 {len(table_files)} 个。")
+    real_figures = [path for path in figure_files if path.name.lower() != "readme.md"]
+    findings.append(f"图表数量：图片 {len(real_figures)} 个，表格 {len(table_files)} 个。")
     empty = [path for path in figure_files + table_files if path.stat().st_size == 0]
     if empty:
         findings.append("BLOCKER: 存在空图表文件：" + ", ".join(_display_path(path) for path in empty))
-    spec = context.outputs_dir / "reproduction_spec.md"
-    if not spec.exists():
-        findings.append("WARN: 缺少 `outputs/reproduction_spec.md`，无法核对图表是否匹配论文目标。")
+
+    workflow_state = load_state(context.state_path)
+    missing_stages = [stage for stage in STAGES if stage not in workflow_state.completed_stages]
+    if missing_stages:
+        findings.append("BLOCKER: 工作流阶段未全部完成：" + ", ".join(missing_stages))
+    if "figures" not in workflow_state.completed_stages:
+        findings.append("BLOCKER: 图表阶段未完成，不能判定图表与论文目标匹配。")
+    if not (context.outputs_dir / "reproduction_spec.md").exists():
+        findings.append("BLOCKER: 缺少 `outputs/reproduction_spec.md`，无法核对图表是否匹配论文目标。")
     if not (context.outputs_dir / "report.md").exists():
-        findings.append("WARN: 缺少 `outputs/report.md`。")
+        findings.append("BLOCKER: 缺少 `outputs/report.md`。")
     state["findings"] = findings
     return state
 
@@ -107,7 +122,7 @@ def _data_reviewer(state: ReviewState) -> ReviewState:
             risky_rows.append(index)
     if risky_rows:
         findings.append(
-            "WARN: 结果表仍包含未运行、脚手架或空复现值，不能视为真实有效数据；问题行："
+            "BLOCKER: 结果表仍包含未运行、脚手架或空复现值，不能视为真实有效数据；问题行："
             + ", ".join(str(i) for i in risky_rows)
         )
     else:
@@ -120,8 +135,6 @@ def _final_gatekeeper(state: ReviewState) -> ReviewState:
     findings = state["findings"]
     if any(item.startswith("BLOCKER") or "BLOCKER:" in item for item in findings):
         conclusion = "不通过"
-    elif any(item.startswith("WARN") or "WARN:" in item for item in findings):
-        conclusion = "有条件通过"
     else:
         conclusion = "通过"
     state["conclusion"] = conclusion

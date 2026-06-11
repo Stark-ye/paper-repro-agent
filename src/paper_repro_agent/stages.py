@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
-import shutil
 
-from .agent import invoke_agent
+from .agent import AgentStageResult, invoke_agent
 from .memory import update_memory
 from .paths import RunContext, make_run_context
 from .references import load_stage_reference, load_templates
 from .review import StageReview, render_review
-from .state import STAGE_LABELS, WorkflowState, save_state, validate_stage
+from .state import STAGE_LABELS, WorkflowState, save_state, validate_stage, validate_stage_prerequisites
 from .tools import search_arxiv, search_semantic_scholar, summarize_artifacts
 
 
@@ -21,6 +20,15 @@ class StageConfig:
     artifact_name: str
 
 
+@dataclass
+class StageRunResult:
+    content: str
+    generated_files: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
+    next_actions: list[str] = field(default_factory=list)
+    mode: str = "scaffold"
+
+
 STAGE_CONFIG: dict[str, StageConfig] = {
     "literature": StageConfig("literature_search.md", "literature_sources.md"),
     "reading": StageConfig("reading_spec.md", "reproduction_spec.md"),
@@ -28,6 +36,31 @@ STAGE_CONFIG: dict[str, StageConfig] = {
     "core": StageConfig("code_implementation.md", "core_implementation.md"),
     "figures": StageConfig("figures_tables.md", "figures_plan.md"),
     "validation": StageConfig("validation_report.md", "report.md"),
+}
+
+REQUIRED_STAGE_PATHS: dict[str, tuple[str, ...]] = {
+    "literature": ("outputs/literature_sources.md",),
+    "reading": ("outputs/reproduction_spec.md",),
+    "baseline": (
+        "outputs/baseline_implementation.md",
+        "outputs/programs.md",
+        "outputs/tables/results.csv",
+        "reproduction/main.py",
+        "reproduction/data.py",
+        "reproduction/metrics.py",
+        "reproduction/config.json",
+        "reproduction/methods/baseline.py",
+        "reproduction/methods/proposed.py",
+    ),
+    "core": (
+        "outputs/core_implementation.md",
+        "outputs/programs.md",
+        "outputs/tables/results.csv",
+        "reproduction/main.py",
+        "reproduction/methods/proposed.py",
+    ),
+    "figures": ("outputs/figures_plan.md", "outputs/figures", "outputs/tables"),
+    "validation": ("outputs/report.md",),
 }
 
 
@@ -40,6 +73,7 @@ def run_stage(
 ) -> str:
     context = context or make_run_context()
     validate_stage(stage)
+    validate_stage_prerequisites(stage, state)
     if paper:
         state.paper_input = paper
     elif stage in {"literature", "reading"} and not state.paper_input:
@@ -50,10 +84,7 @@ def run_stage(
     previous_run_dir = os.getenv("PAPER_REPRO_RUN_DIR")
     os.environ["PAPER_REPRO_RUN_DIR"] = _display_path(context.root_dir)
     try:
-        if use_llm:
-            content, generated = _run_llm_stage(stage, state, context)
-        else:
-            content, generated = _run_scaffold_stage(stage, state, context)
+        run_result = _run_llm_stage(stage, state, context) if use_llm else _run_scaffold_stage(stage, state, context)
     finally:
         if previous_run_dir is None:
             os.environ.pop("PAPER_REPRO_RUN_DIR", None)
@@ -62,11 +93,14 @@ def run_stage(
 
     artifact = context.outputs_dir / STAGE_CONFIG[stage].artifact_name
     artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_text(content, encoding="utf-8")
+    artifact.write_text(run_result.content, encoding="utf-8")
 
-    generated_files = [_display_path(artifact)]
-    generated_files.extend(generated)
-    state.mark_completed(stage, artifact)
+    generated_files = [_display_path(artifact), *run_result.generated_files]
+    _validate_stage_artifacts(stage, context, generated_files, run_result.content)
+
+    state.mark_completed(stage, artifact, mode=run_result.mode)
+    if run_result.risks:
+        state.risks.extend(risk for risk in run_result.risks if risk not in state.risks)
     memory_update = update_memory(stage, state, context, generated_files)
     generated_files.extend(
         [
@@ -78,6 +112,8 @@ def run_stage(
         stage=stage,
         completed=[
             f"已按 `{STAGE_CONFIG[stage].reference_name}` 执行 {STAGE_LABELS[stage]} 阶段。",
+            f"运行模式：{run_result.mode}。",
+            "已通过阶段产物闭环校验。",
             "已生成阶段产物并更新工作流状态。",
         ],
         generated_files=generated_files,
@@ -85,13 +121,15 @@ def run_stage(
             "阶段产物采用中文 Markdown。",
             "通用复现代码保持方法文件与整体比较主程序分离。",
             "本次运行在阶段结束处停止，等待人工审查后再进入下一阶段。",
+            *[f"下一步建议：{item}" for item in run_result.next_actions],
         ],
-        risks=_stage_risks(stage, use_llm),
+        risks=run_result.risks or _stage_risks(stage, use_llm),
         memory_updates=[
             memory_update.summary,
             f"长期记忆：{_display_path(memory_update.memory_path)}",
             f"阶段笔记：{_display_path(memory_update.stage_notes_path)}",
         ],
+        workflow_state=state,
     )
     review_text = render_review(review)
     state.last_review = "console"
@@ -99,53 +137,159 @@ def run_stage(
     return review_text
 
 
-def _run_llm_stage(stage: str, state: WorkflowState, context: RunContext) -> tuple[str, list[str]]:
+def _run_llm_stage(stage: str, state: WorkflowState, context: RunContext) -> StageRunResult:
     task = (
         f"为阶段 `{stage}` 生成或更新标准产物。"
-        "如需写入补充文件，只能写入 outputs/ 或 reproduction/。"
+        "如需写入补充文件，只能调用工具写入 outputs/ 或 reproduction/。"
         "复现代码应采用 `reproduction/main.py`、`reproduction/methods/`、`data.py`、`metrics.py` 的通用结构。"
-        "最终回复必须是可保存为阶段产物的 Markdown，且不得伪造实验结果。"
+        "最终回复必须是 JSON 对象，包含 artifact_markdown、files_written、risks、next_actions。"
+        "不得伪造实验结果。"
     )
-    content = invoke_agent(stage, state, task)
-    generated: list[str] = []
+    agent_result: AgentStageResult = invoke_agent(stage, state, task)
+    generated = _validate_agent_files_written(context, agent_result.files_written)
     if stage in {"baseline", "core"}:
         generated.extend(_ensure_reproduction_scaffold(context))
+        generated.append(_ensure_results_template(context))
         generated.append(_ensure_program_report(context))
-    return content, generated
+    if stage == "figures":
+        (context.outputs_dir / "figures").mkdir(parents=True, exist_ok=True)
+        (context.outputs_dir / "tables").mkdir(parents=True, exist_ok=True)
+    if stage == "validation":
+        try:
+            summarize_artifacts("outputs/artifacts_summary.md")
+            generated.append(_display_path(context.outputs_dir / "artifacts_summary.md"))
+        except Exception:
+            pass
+    return StageRunResult(
+        content=agent_result.artifact_markdown,
+        generated_files=generated,
+        risks=agent_result.risks,
+        next_actions=agent_result.next_actions,
+        mode="langchain",
+    )
 
 
-def _run_scaffold_stage(stage: str, state: WorkflowState, context: RunContext) -> tuple[str, list[str]]:
+def _validate_agent_files_written(context: RunContext, files_written: list[str]) -> list[str]:
+    valid: list[str] = []
+    for raw_path in files_written:
+        raw = Path(raw_path)
+        if raw.is_absolute():
+            raise RuntimeError(f"LangChain files_written must use relative paths under outputs/ or reproduction/: {raw_path}")
+        if not raw.parts or raw.parts[0] not in {"outputs", "reproduction"}:
+            raise RuntimeError(f"LangChain files_written path must start with outputs/ or reproduction/: {raw_path}")
+        candidate = (context.root_dir / raw).resolve()
+        _ensure_inside_run_dir(context, candidate, raw_path)
+        if not candidate.exists():
+            raise RuntimeError(f"Stage artifact validation failed: declared generated file does not exist: {raw_path}")
+        if candidate.is_file() and candidate.stat().st_size == 0 and candidate.name != "__init__.py":
+            raise RuntimeError(f"Stage artifact validation failed: declared generated file is empty: {raw_path}")
+        valid.append(_display_path(candidate))
+    return valid
+
+
+def _run_scaffold_stage(stage: str, state: WorkflowState, context: RunContext) -> StageRunResult:
     context.outputs_dir.mkdir(parents=True, exist_ok=True)
     (context.outputs_dir / "figures").mkdir(parents=True, exist_ok=True)
     (context.outputs_dir / "tables").mkdir(parents=True, exist_ok=True)
     reference = load_stage_reference(stage)
     templates = load_templates()
 
+    generated: list[str] = []
     if stage == "literature":
-        return _literature_scaffold(state, reference, templates), []
-    if stage == "reading":
+        content = _literature_scaffold(state, reference, templates)
+    elif stage == "reading":
         generated = _maybe_extract_pdf_text(state, context)
-        return _reading_scaffold(state, reference, context), generated
-    if stage == "baseline":
+        content = _reading_scaffold(state, reference, context)
+    elif stage == "baseline":
         generated = _ensure_reproduction_scaffold(context)
         generated.append(_ensure_results_template(context))
         generated.append(_ensure_program_report(context))
-        return _baseline_scaffold(state, reference, context), generated
-    if stage == "core":
+        content = _baseline_scaffold(state, reference, context)
+    elif stage == "core":
         generated = _ensure_reproduction_scaffold(context)
+        generated.append(_ensure_results_template(context))
         generated.append(_ensure_program_report(context))
-        return _core_scaffold(state, reference, context), generated
-    if stage == "figures":
-        return _figures_scaffold(state, reference, context), []
-    if stage == "validation":
-        summary_path = "outputs/artifacts_summary.md"
+        content = _core_scaffold(state, reference, context)
+    elif stage == "figures":
+        content = _figures_scaffold(reference, context)
+    elif stage == "validation":
         try:
-            summarize_artifacts(summary_path)
+            summarize_artifacts("outputs/artifacts_summary.md")
             generated = [_display_path(context.outputs_dir / "artifacts_summary.md")]
         except Exception:
             generated = []
-        return _validation_scaffold(state, reference, context), generated
-    raise ValueError(f"Unknown stage: {stage}")
+        content = _validation_scaffold(state, reference, context)
+    else:
+        raise ValueError(f"Unknown stage: {stage}")
+    return StageRunResult(content=content, generated_files=generated, risks=_stage_risks(stage, False), mode="scaffold")
+
+
+def _validate_stage_artifacts(stage: str, context: RunContext, generated_files: list[str], content: str) -> None:
+    required = [context.root_dir / rel for rel in REQUIRED_STAGE_PATHS[stage]]
+    missing = [path for path in required if not path.exists()]
+    if missing:
+        readable = ", ".join(_display_path(path) for path in missing)
+        raise RuntimeError(f"Stage artifact validation failed: missing required artifact(s): {readable}")
+
+    for path in required:
+        if path.is_file() and path.stat().st_size == 0:
+            raise RuntimeError(f"Stage artifact validation failed: required artifact is empty: {_display_path(path)}")
+
+    for raw_path in generated_files:
+        candidate = _resolve_generated_path(context, raw_path)
+        if candidate is None:
+            continue
+        _ensure_inside_run_dir(context, candidate, raw_path)
+        if not candidate.exists():
+            raise RuntimeError(f"Stage artifact validation failed: declared generated file does not exist: {raw_path}")
+        if candidate.is_file() and candidate.stat().st_size == 0 and candidate.name != "__init__.py":
+            raise RuntimeError(f"Stage artifact validation failed: generated file is empty: {raw_path}")
+
+    if stage == "validation":
+        _validate_truthfulness(context, content)
+
+
+def _resolve_generated_path(context: RunContext, raw_path: str) -> Path | None:
+    if not raw_path:
+        return None
+    raw = Path(raw_path)
+    candidates = [raw.resolve()] if raw.is_absolute() else [(context.root_dir / raw).resolve(), (Path.cwd() / raw).resolve()]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _ensure_inside_run_dir(context: RunContext, candidate: Path, original: str) -> None:
+    root = context.root_dir.resolve()
+    if candidate != root and root not in candidate.parents:
+        raise RuntimeError(f"Stage artifact validation failed: generated path escapes run directory: {original}")
+
+
+def _validate_truthfulness(context: RunContext, report_text: str) -> None:
+    results_path = context.outputs_dir / "tables" / "results.csv"
+    if not results_path.exists():
+        return
+    results = results_path.read_text(encoding="utf-8", errors="replace").lower()
+    has_unfinished = any(token in results for token in ("todo", "not_run", "scaffold", "fake", "dummy", "proxy"))
+    if not has_unfinished:
+        return
+    report = report_text.lower()
+    disclosure_tokens = (
+        "未完成",
+        "not_run",
+        "todo",
+        "脚手架",
+        "尚未",
+        "不能视为真实",
+        "不把脚手架",
+        "无真实复现",
+    )
+    if not any(token in report for token in disclosure_tokens):
+        raise RuntimeError(
+            "Stage artifact validation failed: results.csv contains unfinished/scaffold markers, "
+            "but outputs/report.md does not disclose that results are not yet real reproduction values."
+        )
 
 
 def _literature_scaffold(state: WorkflowState, reference: str, templates: str) -> str:
@@ -227,7 +371,7 @@ def _reading_scaffold(state: WorkflowState, reference: str, context: RunContext)
 ## 图表目标
 
 - 只复现论文中支撑主要结论的必要图表。
-- 每张图表必须能追溯到真实运行数据或明确标注为未完成。
+- 每张图表必须能追溯到真实运行数据，或明确标注为未完成。
 
 ## 真实性约束
 
@@ -316,7 +460,7 @@ def _core_scaffold(state: WorkflowState, reference: str, context: RunContext) ->
 """
 
 
-def _figures_scaffold(state: WorkflowState, reference: str, context: RunContext) -> str:
+def _figures_scaffold(reference: str, context: RunContext) -> str:
     return f"""# 图表与表格整理计划
 
 ## 目录
@@ -416,6 +560,8 @@ def _maybe_extract_pdf_text(state: WorkflowState, context: RunContext) -> list[s
         return []
     source = path if path.is_absolute() else Path.cwd() / path
     if not source.exists():
+        source = context.root_dir / path
+    if not source.exists():
         return []
     try:
         from .tools import extract_pdf_text
@@ -472,8 +618,6 @@ def _ensure_reproduction_scaffold(context: RunContext) -> list[str]:
         if not path.exists():
             path.write_text(content, encoding="utf-8")
         paths.append(path)
-    if shutil.which("python"):
-        pass
     return [_display_path(path) for path in paths]
 
 
@@ -482,7 +626,7 @@ def _ensure_program_report(context: RunContext) -> str:
     methods_dir = context.reproduction_dir / "methods"
     method_files = sorted(path for path in methods_dir.glob("*.py") if path.name != "__init__.py") if methods_dir.exists() else []
     method_rows = "\n".join(
-        f"| `{_display_path(path)}` | 复现一个论文方法，需在 `run(dataset)` 中补齐真实逻辑。 | `{_detect_program_status(path)}` |"
+        f"| `{_display_path(path)}` | 复现一个论文方法，需要在 `run(dataset)` 中补齐真实逻辑。 | `{_detect_program_status(path)}` |"
         for path in method_files
     )
     if not method_rows:
